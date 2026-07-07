@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ko"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교사 시간표</title>
+<style>
+  :root{--bd:#d9dde3;--hd:#f1f4f8;--ac:#2563eb;--chg:#e11d48;--ok:#16a34a;--sw:#7c3aed;}
+  *{box-sizing:border-box}
+  body{font-family:'Malgun Gothic',system-ui,sans-serif;margin:0;background:#f6f8fb;color:#1f2937}
+  header{background:#fff;border-bottom:1px solid var(--bd);padding:16px 20px}
+  h1{font-size:18px;margin:0 0 12px}
+  .tabs{display:flex;gap:6px;margin:0 0 12px}
+  .tab{padding:7px 14px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer;font-size:14px}
+  .tab.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  select{padding:8px 10px;border:1px solid var(--bd);border-radius:8px;font-size:14px;background:#fff;min-width:120px}
+  button.act{padding:8px 14px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-size:14px;cursor:pointer}
+  main{padding:20px;max-width:960px;margin:0 auto}
+  .meta{color:#6b7280;font-size:13px;margin:0 0 12px}
+  table{border-collapse:collapse;width:100%;background:#fff;border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+  th,td{border:1px solid var(--bd);padding:8px 6px;text-align:center;font-size:13px;vertical-align:middle;height:52px}
+  thead th{background:var(--hd);font-weight:600}
+  .pcol{background:var(--hd);font-weight:600;white-space:nowrap;width:64px}
+  .ptime{display:block;font-weight:400;color:#9ca3af;font-size:11px}
+  td .cls{font-weight:700;color:var(--ac)}
+  td .sub{display:block;color:#374151;font-size:12px;margin-top:2px}
+  td.changed{background:#fff1f4}
+  td.changed .cls{color:var(--chg)}
+  td.swap{background:#f3e8ff;outline:2px solid var(--sw);outline-offset:-2px}
+  td.swap .cls{color:var(--sw)}
+  .empty{color:#cbd5e1}
+  .hint{color:#6b7280;font-size:12px;margin-top:14px;line-height:1.6}
+  .badge{display:inline-block;background:var(--chg);color:#fff;border-radius:4px;font-size:10px;padding:0 4px;margin-left:3px;vertical-align:top}
+  .tool{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:18px}
+  .tool h2{font-size:15px;margin:0 0 12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .row b{min-width:52px}
+  .verdict{padding:10px 14px;border-radius:8px;font-weight:600;margin:12px 0}
+  .verdict.ok{background:#e7f8ee;color:var(--ok);border:1px solid #b6ecc9}
+  .verdict.bad{background:#fdeaef;color:var(--chg);border:1px solid #f6c7d3}
+  .verdict ul{margin:6px 0 0;padding-left:18px;font-weight:400;font-size:13px}
+  .grids{display:flex;gap:18px;flex-wrap:wrap}
+  .grids>div{flex:1;min-width:300px}
+  .grids h3{font-size:13px;margin:0 0 6px;color:#374151}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{background:var(--hd);border:1px solid var(--bd);border-radius:14px;padding:4px 10px;font-size:13px}
+  .hidden{display:none}
+  #viewmode{min-width:92px}
+  .autorow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid var(--bd);font-size:13px}
+  .autorow:last-child{border-bottom:0}
+  button.mini{padding:4px 10px;border:1px solid var(--ac);background:#fff;color:var(--ac);border-radius:6px;cursor:pointer;font-size:12px}
+  #autoResult{max-height:340px;overflow:auto;margin-top:6px}
+  #logResult td{font-size:12px}
+  #grid,#logResult,.grids>div{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  @media (max-width:560px){
+    body{-webkit-text-size-adjust:100%}
+    header{padding:12px 14px}
+    h1{font-size:16px;margin-bottom:10px}
+    main{padding:12px}
+    .controls{gap:8px}
+    .controls select{flex:1;min-width:0}
+    #week{flex-basis:100%}
+    .tabs .tab{flex:1;text-align:center;padding:7px 6px}
+    th,td{padding:5px 3px;font-size:11px;height:46px}
+    .pcol{width:46px}
+    td .sub{font-size:10px}
+    .ptime{font-size:10px}
+    .tool{padding:12px}
+    .tool h2{font-size:14px}
+    .row{gap:6px}
+    .row b{flex-basis:100%;min-width:0}
+    .row select,.row input{flex:1;min-width:0}
+    .row button.act{flex-basis:100%}
+    .grids{flex-direction:column}
+    .grids>div{min-width:0}
+    .autorow{font-size:12px}
+  }
+</style></head>
+<body>
+<header>
+  <h1>📅 교사 시간표 뷰어</h1>
+  <div class="tabs">
+    <div class="tab on" data-tab="view">시간표 보기</div>
+    <div class="tab" data-tab="swap">교환 도우미</div>
+    <div class="tab" data-tab="log">교환 내역</div>
+  </div>
+  <div class="controls">
+    <select id="week"></select>
+    <select id="viewmode"><option value="teacher">교사별</option><option value="class">반별</option></select>
+    <select id="target"></select>
+  </div>
+</header>
+<main>
+  <!-- 시간표 보기 -->
+  <section id="panel-view">
+    <p class="meta" id="meta"></p>
+    <div id="grid"></div>
+    <p class="hint">
+      · <b>교사별/반별</b>을 바꿔 특정 교사 또는 특정 반의 시간표를 볼 수 있습니다.<br>
+      · <b>주차</b>를 바꾸면 그 주의 시간표를 봅니다. 데이터는 컴시간에서 몇 시간마다 자동 갱신되고,
+        지나간 주차는 '지난 기록'으로 계속 쌓입니다.<br>
+      · <span class="badge">변경</span>은 이동/변경 수업입니다.
+    </p>
+  </section>
+
+  <!-- 교환 도우미 -->
+  <section id="panel-swap" class="hidden">
+    <p class="hint" style="margin-top:0">※ 실제 컴시간을 바꾸지 않습니다. 교환 전 <b>겹침 여부만</b> 미리 확인하는 용도입니다.</p>
+
+    <div class="tool">
+      <h2>① 이 시간에 빈 교사 찾기 (보강 후보)</h2>
+      <div class="row"><b>시간</b><select id="fd"></select><select id="fp"></select></div>
+      <div id="freeResult"></div>
+    </div>
+
+    <div class="tool">
+      <h2>② 교환 가능한 상대 자동 찾기</h2>
+      <div class="row"><b>내 수업</b><select id="asT"></select><select id="asS"></select><button class="act" id="autoBtn">자동 찾기</button></div>
+      <div id="autoResult"></div>
+    </div>
+
+    <div class="tool">
+      <h2>③ 두 수업 맞바꾸기 미리보기</h2>
+      <div class="row"><b>수업 1</b><select id="saT"></select><select id="saS"></select></div>
+      <div class="row"><b>수업 2</b><select id="sbT"></select><select id="sbS"></select></div>
+      <button class="act" id="swapBtn">교환 미리보기</button>
+      <div id="swapResult"></div>
+    </div>
+  </section>
+
+  <!-- 교환 내역 -->
+  <section id="panel-log" class="hidden">
+    <div class="tool">
+      <h2>저장된 교환 내역 <span class="meta" style="font-weight:400">(이 기기에만 저장됩니다)</span></h2>
+      <div id="logResult"></div>
+    </div>
+  </section>
+</main>
+<script>
+const DAYS=["월","화","수","목","금"];
+const $=s=>document.querySelector(s);
+let code=null, current=null, schoolName='', idx=null, sel={teacher:null,cls:null}, lastSwap=null;
+
+// ---------- 공통 조회 헬퍼 ----------
+const occ = tidx => (current.per_teacher[tidx]||[]);
+const entryAt = (tidx,d,p) => occ(tidx).find(e=>e.day===d&&e.period===p)||null;
+const nm = tidx => current.teachers.find(t=>t.idx===tidx)?.name||('#'+tidx);
+const maxP = () => Math.max(6,(current?current.max_period:5)+1);
+function classAt(cls,d,p){
+  for(const t of current.teachers){
+    const e=occ(t.idx).find(x=>x.cls===cls&&x.day===d&&x.period===p);
+    if(e) return {idx:t.idx,name:t.name,sub:e.sub};
+  }
+  return null;
+}
+function classList(){
+  const s=new Set();
+  current.teachers.forEach(t=>occ(t.idx).forEach(e=>s.add(e.cls)));
+  return [...s].sort((a,b)=>{const[ga,ca]=a.split('-').map(Number),[gb,cb]=b.split('-').map(Number);return ga-gb||ca-cb;});
+}
+
+// ---------- 부팅 / 주차 ----------
+async function boot(){
+  idx=await (await fetch('data/index.json?t='+Date.now())).json();
+  code=idx.school.code; schoolName=idx.school.name;
+  document.title=schoolName+' 교사 시간표';
+  $('#week').innerHTML=idx.weeks.map(w=>{
+    const tag = w.start===idx.current?'이번주':(w.start>idx.current?'다음주':'지난 기록');
+    return `<option value="${w.start}" ${w.start===idx.current?'selected':''}>${w.label||w.start}  [${tag}]</option>`;
+  }).join('');
+  await loadWeek();
+}
+async function loadWeek(){
+  current=await (await fetch(`data/${code}_${$('#week').value}.json?t=`+Date.now())).json();
+  fillTarget();
+  render();
+  setupSwapTab();
+}
+
+// ---------- 시간표 보기 (교사별/반별) ----------
+function fillTarget(){
+  if($('#viewmode').value==='teacher'){
+    $('#target').innerHTML=current.teachers.map(t=>`<option value="${t.idx}">${t.name}</option>`).join('');
+    if(sel.teacher){const h=current.teachers.find(t=>t.name===sel.teacher); if(h)$('#target').value=h.idx;}
+  }else{
+    const cls=classList();
+    $('#target').innerHTML=cls.map(c=>`<option value="${c}">${c}반</option>`).join('');
+    if(sel.cls&&cls.includes(sel.cls))$('#target').value=sel.cls;
+  }
+}
+function render(){
+  if(!current) return;
+  const map={}; let count=0, label='';
+  if($('#viewmode').value==='teacher'){
+    const tidx=+$('#target').value; sel.teacher=nm(tidx);
+    occ(tidx).forEach(e=>{ map[e.day+'_'+e.period]={top:e.cls,bottom:e.sub,changed:e.changed}; count++; });
+    label=`${schoolName} · ${current.week_label||''} · ${sel.teacher} · 주당 ${count}시간`;
+  }else{
+    const cls=$('#target').value; sel.cls=cls;
+    current.teachers.forEach(t=>occ(t.idx).forEach(e=>{ if(e.cls===cls){ map[e.day+'_'+e.period]={top:e.sub,bottom:t.name,changed:e.changed}; count++; } }));
+    label=`${schoolName} · ${current.week_label||''} · ${cls}반 · 주당 ${count}시간`;
+  }
+  $('#grid').innerHTML=gridHTML(map);
+  $('#meta').textContent=label;
+}
+function gridHTML(map){
+  const times=current.period_times||[];
+  let html='<table><thead><tr><th class="pcol">교시</th>'+DAYS.map(d=>`<th>${d}</th>`).join('')+'</tr></thead><tbody>';
+  for(let p=0;p<maxP();p++){
+    html+=`<tr><td class="pcol">${p+1}<span class="ptime">${times[p]||''}</span></td>`;
+    for(let d=0;d<5;d++){
+      const c=map[d+'_'+p];
+      const cl=c?(c.swap?'swap':(c.changed?'changed':'')):'empty';
+      html+= c
+        ? `<td class="${cl}"><span class="cls">${c.top}</span>${c.changed?'<span class="badge">변경</span>':''}<span class="sub">${c.bottom||''}</span></td>`
+        : '<td class="empty">·</td>';
+    }
+    html+='</tr>';
+  }
+  return html+'</tbody></table>';
+}
+
+// ---------- 교환 도우미 ----------
+function setupSwapTab(){
+  $('#fd').innerHTML=DAYS.map((d,i)=>`<option value="${i}">${d}</option>`).join('');
+  $('#fp').innerHTML=Array.from({length:maxP()},(_,p)=>`<option value="${p}">${p+1}교시</option>`).join('');
+  const opts=current.teachers.map(t=>`<option value="${t.idx}">${t.name}</option>`).join('');
+  $('#saT').innerHTML=opts; $('#sbT').innerHTML=opts; $('#asT').innerHTML=opts;
+  if(current.teachers[1]) $('#sbT').value=current.teachers[1].idx;
+  fillSlots('saT','saS'); fillSlots('sbT','sbS'); fillSlots('asT','asS');
+  freeSearch();
+  $('#swapResult').innerHTML=''; $('#autoResult').innerHTML='';
+}
+function fillSlots(tSel,sSel){
+  const tidx=+$('#'+tSel).value;
+  const slots=occ(tidx).slice().sort((a,b)=>a.day-b.day||a.period-b.period);
+  $('#'+sSel).innerHTML=slots.map(e=>`<option value="${e.day}_${e.period}">${DAYS[e.day]} ${e.period+1}교시 · ${e.cls} ${e.sub}</option>`).join('')
+    || '<option value="">(수업 없음)</option>';
+}
+function freeSearch(){
+  const d=+$('#fd').value, p=+$('#fp').value;
+  const free=current.teachers.filter(t=>!entryAt(t.idx,d,p));
+  const busy=current.teachers.length-free.length;
+  $('#freeResult').innerHTML=
+    `<p class="meta">${DAYS[d]}요일 ${p+1}교시 · 수업 없는 교사 ${free.length}명 (수업 중 ${busy}명)</p>`+
+    `<div class="chips">${free.map(t=>`<span class="chip">${t.name}</span>`).join('')||'<span class="meta">없음</span>'}</div>`;
+}
+function computeSwap(aT,d1,p1,bT,d2,p2){
+  const L1=entryAt(aT,d1,p1), L2=entryAt(bT,d2,p2);
+  if(!L1||!L2) return null;
+  if(aT===bT&&d1===d2&&p1===p2) return {invalid:1};
+  const mo=[{t:aT,d:d1,p:p1},{t:bT,d:d2,p:p2}];
+  const isOut=(t,d,p)=>mo.some(m=>m.t===t&&m.d===d&&m.p===p);
+  const warns=[];
+  const aC=entryAt(aT,d2,p2); if(aC&&!isOut(aT,d2,p2)) warns.push(`${nm(aT)} 교사가 ${DAYS[d2]} ${p2+1}교시에 이미 수업(${aC.cls} ${aC.sub})이 있습니다.`);
+  const bC=entryAt(bT,d1,p1); if(bC&&!isOut(bT,d1,p1)) warns.push(`${nm(bT)} 교사가 ${DAYS[d1]} ${p1+1}교시에 이미 수업(${bC.cls} ${bC.sub})이 있습니다.`);
+  const c1=classAt(L1.cls,d2,p2); if(c1&&!isOut(c1.idx,d2,p2)) warns.push(`${L1.cls}반이 ${DAYS[d2]} ${p2+1}교시에 이미 수업(${c1.sub}/${c1.name})이 있습니다.`);
+  const c2=classAt(L2.cls,d1,p1); if(c2&&!isOut(c2.idx,d1,p1)) warns.push(`${L2.cls}반이 ${DAYS[d1]} ${p1+1}교시에 이미 수업(${c2.sub}/${c2.name})이 있습니다.`);
+  return {L1,L2,warns,sameT:aT===bT};
+}
+function doSwap(){
+  const aT=+$('#saT').value, bT=+$('#sbT').value, va=$('#saS').value, vb=$('#sbS').value;
+  if(!va||!vb){ $('#swapResult').innerHTML='<p class="meta">양쪽 수업을 선택하세요.</p>'; return; }
+  const [d1,p1]=va.split('_').map(Number), [d2,p2]=vb.split('_').map(Number);
+  const r=computeSwap(aT,d1,p1,bT,d2,p2);
+  if(!r||r.invalid){ $('#swapResult').innerHTML='<p class="meta">다른 두 수업을 선택하세요.</p>'; return; }
+  const {L1,L2,warns,sameT}=r;
+  function afterMap(tidx,removes,adds){
+    const m={};
+    occ(tidx).forEach(e=>{ if(!removes.some(x=>x.d===e.day&&x.p===e.period)) m[e.day+'_'+e.period]={top:e.cls,bottom:e.sub,changed:e.changed}; });
+    adds.forEach(a=>{ m[a.d+'_'+a.p]={top:a.cls,bottom:a.sub,swap:1}; });
+    return m;
+  }
+  let gridsHTML;
+  if(sameT){
+    const m=afterMap(aT,[{d:d1,p:p1},{d:d2,p:p2}],[{d:d2,p:p2,cls:L1.cls,sub:L1.sub},{d:d1,p:p1,cls:L2.cls,sub:L2.sub}]);
+    gridsHTML=`<div><h3>${nm(aT)} (교환 후)</h3>${gridHTML(m)}</div>`;
+  }else{
+    const ma=afterMap(aT,[{d:d1,p:p1}],[{d:d2,p:p2,cls:L1.cls,sub:L1.sub}]);
+    const mb=afterMap(bT,[{d:d2,p:p2}],[{d:d1,p:p1,cls:L2.cls,sub:L2.sub}]);
+    gridsHTML=`<div><h3>${nm(aT)} (교환 후)</h3>${gridHTML(ma)}</div><div><h3>${nm(bT)} (교환 후)</h3>${gridHTML(mb)}</div>`;
+  }
+  const desc=`${nm(aT)}의 [${DAYS[d1]} ${p1+1}교시 ${L1.cls} ${L1.sub}] ↔ ${nm(bT)}의 [${DAYS[d2]} ${p2+1}교시 ${L2.cls} ${L2.sub}]`;
+  const verdict = warns.length
+    ? `<div class="verdict bad">⚠ 겹침 ${warns.length}건 — 이대로 교환하면 충돌합니다.<ul>${warns.map(w=>`<li>${w}</li>`).join('')}</ul></div>`
+    : `<div class="verdict ok">✅ 겹침 없음 — 교환 가능합니다.</div>`;
+  lastSwap={aT,d1,p1,bT,d2,p2,L1,L2,warns,desc,ok:warns.length===0};
+  $('#swapResult').innerHTML=`<p class="meta" style="margin-top:12px">${desc}</p>${verdict}<div class="grids">${gridsHTML}</div>`+
+    `<div class="row" style="margin-top:12px"><input id="swapMemo" placeholder="메모(선택)" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--bd);border-radius:8px"><button class="act" id="saveBtn">이 교환 기록 저장</button></div><div id="saveMsg" class="meta"></div>`;
+  $('#saveBtn').addEventListener('click',saveSwap);
+}
+// ---------- 교환 내역 (localStorage) ----------
+const LS_KEY='comci_exchanges';
+const loadLS=()=>{ try{ return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); }catch(e){ return []; } };
+const saveLS=l=>localStorage.setItem(LS_KEY,JSON.stringify(l));
+function saveSwap(){
+  if(!lastSwap) return;
+  const s=lastSwap, lst=loadLS();
+  lst.push({id:(lst.at(-1)?.id||0)+1, saved_at:new Date().toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'}),
+    week_label:current.week_label,
+    a_name:nm(s.aT), a_day:s.d1, a_period:s.p1, a_cls:s.L1.cls, a_sub:s.L1.sub,
+    b_name:nm(s.bT), b_day:s.d2, b_period:s.p2, b_cls:s.L2.cls, b_sub:s.L2.sub,
+    ok:s.ok, verdict:s.ok?'교환 가능':('겹침 '+s.warns.length+'건'), memo:$('#swapMemo').value||''});
+  saveLS(lst);
+  $('#saveMsg').textContent='저장되었습니다. (상단 [교환 내역] 탭에서 확인 · 이 기기에만 저장)';
+}
+function loadLog(){
+  const list=loadLS();
+  if(!list.length){ $('#logResult').innerHTML='<p class="meta">저장된 교환 내역이 없습니다.</p>'; return; }
+  list.sort((a,b)=>(b.id||0)-(a.id||0));
+  const rows=list.map(r=>`<tr>
+    <td>${r.saved_at||''}</td>
+    <td>${r.week_label||''}</td>
+    <td style="text-align:left">${r.a_name} [${DAYS[r.a_day]} ${r.a_period+1}교시 ${r.a_cls} ${r.a_sub}]<br>↔ ${r.b_name} [${DAYS[r.b_day]} ${r.b_period+1}교시 ${r.b_cls} ${r.b_sub}]</td>
+    <td>${r.ok?'<span style="color:#16a34a">가능</span>':'<span style="color:#e11d48">'+(r.verdict||'겹침')+'</span>'}</td>
+    <td style="text-align:left">${r.memo||''}</td>
+    <td><button class="mini" data-id="${r.id}">삭제</button></td></tr>`).join('');
+  $('#logResult').innerHTML=`<table><thead><tr><th>저장시각</th><th>주차</th><th>교환 내용</th><th>판정</th><th>메모</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  $('#logResult').querySelectorAll('button.mini').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('이 교환 내역을 삭제할까요?')) return;
+    saveLS(loadLS().filter(r=>r.id!==+b.dataset.id));
+    loadLog();
+  }));
+}
+// 교환 자동 검색
+function autoSearch(){
+  const aT=+$('#asT').value, va=$('#asS').value;
+  if(!va){ $('#autoResult').innerHTML='<p class="meta">먼저 내 수업을 선택하세요.</p>'; return; }
+  const [d1,p1]=va.split('_').map(Number);
+  const L1=entryAt(aT,d1,p1); if(!L1) return;
+  const res=[];
+  current.teachers.forEach(t=>{ if(t.idx===aT) return;
+    occ(t.idx).forEach(l2=>{
+      const r=computeSwap(aT,d1,p1,t.idx,l2.day,l2.period);
+      if(r&&!r.invalid&&r.warns.length===0)
+        res.push({bT:t.idx,bName:t.name,d2:l2.day,p2:l2.period,cls:l2.cls,sub:l2.sub,same:(d1===l2.day&&p1===l2.period)?1:0});
+    });
+  });
+  res.sort((a,b)=>a.same-b.same||a.d2-b.d2||a.p2-b.p2);
+  if(!res.length){ $('#autoResult').innerHTML='<p class="meta">겹침 없이 교환 가능한 상대가 없습니다.</p>'; return; }
+  const head=`<p class="meta">${nm(aT)}의 [${DAYS[d1]} ${p1+1}교시 ${L1.cls} ${L1.sub}] 와(과) 겹침 없이 교환 가능: <b>${res.length}건</b> (같은 교시 교환은 서로 반만 바뀝니다)</p>`;
+  const rows=res.slice(0,80).map((r,i)=>`<div class="autorow"><span>${r.same?'<b style="color:#0d9488">같은교시</b> ':''}${r.bName} · ${DAYS[r.d2]} ${r.p2+1}교시 · ${r.cls} ${r.sub}</span><button class="mini" data-i="${i}">미리보기</button></div>`).join('');
+  const more=res.length>80?`<p class="meta">…외 ${res.length-80}건</p>`:'';
+  $('#autoResult').innerHTML=head+rows+more;
+  $('#autoResult').querySelectorAll('button.mini').forEach(btn=>btn.addEventListener('click',()=>{
+    const r=res[+btn.dataset.i]; pickSwap(aT,d1,p1,r.bT,r.d2,r.p2);
+  }));
+}
+function pickSwap(aT,d1,p1,bT,d2,p2){
+  $('#saT').value=aT; fillSlots('saT','saS'); $('#saS').value=d1+'_'+p1;
+  $('#sbT').value=bT; fillSlots('sbT','sbS'); $('#sbS').value=d2+'_'+p2;
+  doSwap();
+  $('#swapResult').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+// ---------- 탭 전환 / 이벤트 ----------
+document.querySelectorAll('.tab').forEach(tb=>tb.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  tb.classList.add('on');
+  const t=tb.dataset.tab;
+  $('#panel-view').classList.toggle('hidden',t!=='view');
+  $('#panel-swap').classList.toggle('hidden',t!=='swap');
+  $('#panel-log').classList.toggle('hidden',t!=='log');
+  const showCtl = t==='view';
+  $('#viewmode').style.display = showCtl ? '' : 'none';
+  $('#target').style.display = showCtl ? '' : 'none';
+  if(t==='log') loadLog();
+}));
+$('#week').addEventListener('change',loadWeek);
+$('#viewmode').addEventListener('change',()=>{ fillTarget(); render(); });
+$('#target').addEventListener('change',render);
+$('#fd').addEventListener('change',freeSearch);
+$('#fp').addEventListener('change',freeSearch);
+$('#saT').addEventListener('change',()=>fillSlots('saT','saS'));
+$('#sbT').addEventListener('change',()=>fillSlots('sbT','sbS'));
+$('#asT').addEventListener('change',()=>fillSlots('asT','asS'));
+$('#swapBtn').addEventListener('click',doSwap);
+$('#autoBtn').addEventListener('click',autoSearch);
+boot();
+</script>
+</body></html>
