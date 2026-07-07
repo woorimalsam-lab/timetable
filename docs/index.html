@@ -139,7 +139,8 @@
 <script>
 const DAYS=["월","화","수","목","금"];
 const $=s=>document.querySelector(s);
-let code=null, current=null, schoolName='', idx=null, sel={teacher:null,cls:null}, lastSwap=null;
+const DEFAULT_TEACHER='김수*';   // 처음 열 때 기본 선택 교사
+let code=null, current=null, schoolName='', idx=null, sel={teacher:DEFAULT_TEACHER,cls:null}, lastSwap=null;
 
 // ---------- 공통 조회 헬퍼 ----------
 const occ = tidx => (current.per_teacher[tidx]||[]);
@@ -227,6 +228,8 @@ function setupSwapTab(){
   const opts=current.teachers.map(t=>`<option value="${t.idx}">${t.name}</option>`).join('');
   $('#saT').innerHTML=opts; $('#sbT').innerHTML=opts; $('#asT').innerHTML=opts;
   if(current.teachers[1]) $('#sbT').value=current.teachers[1].idx;
+  const def=current.teachers.find(t=>t.name===DEFAULT_TEACHER);
+  if(def){ $('#saT').value=def.idx; $('#asT').value=def.idx; }
   fillSlots('saT','saS'); fillSlots('sbT','sbS'); fillSlots('asT','asS');
   freeSearch();
   $('#swapResult').innerHTML=''; $('#autoResult').innerHTML='';
