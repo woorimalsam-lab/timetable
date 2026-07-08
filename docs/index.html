@@ -75,6 +75,28 @@
     .grids>div{min-width:0}
     .autorow{font-size:12px}
   }
+  /* ===== 다크 모드 (부모 앱에서 ?theme=dark 또는 postMessage로 전달) ===== */
+  html[data-theme="dark"]{--bd:#2a2f3a;--hd:#262c38;background:#171a21}
+  html[data-theme="dark"] body{background:#171a21;color:#e6e8ee}
+  html[data-theme="dark"] header{background:#1f2430;border-bottom-color:var(--bd)}
+  html[data-theme="dark"] .tab{background:#1f2430;color:#cdd2dc;border-color:var(--bd)}
+  html[data-theme="dark"] .tab.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+  html[data-theme="dark"] select,html[data-theme="dark"] input{background:#1f2430;color:#e6e8ee;border-color:var(--bd)}
+  html[data-theme="dark"] table{background:#1f2430;border-color:var(--bd)}
+  html[data-theme="dark"] th,html[data-theme="dark"] td{border-color:var(--bd)}
+  html[data-theme="dark"] thead th,html[data-theme="dark"] .pcol{background:#262c38}
+  html[data-theme="dark"] td .sub{color:#c2c8d4}
+  html[data-theme="dark"] .meta,html[data-theme="dark"] .hint,html[data-theme="dark"] .grids h3{color:#9aa3b2}
+  html[data-theme="dark"] .ptime{color:#7c8494}
+  html[data-theme="dark"] .empty{color:#3a4250}
+  html[data-theme="dark"] .tool{background:#1f2430;border-color:var(--bd)}
+  html[data-theme="dark"] .tool h2{color:#e6e8ee}
+  html[data-theme="dark"] .chip{background:#262c38;border-color:var(--bd);color:#dfe3ea}
+  html[data-theme="dark"] td.changed{background:#3a2530}
+  html[data-theme="dark"] td.swap{background:#2e2743}
+  html[data-theme="dark"] .verdict.ok{background:#12301f;border-color:#1c5133;color:#5fd08a}
+  html[data-theme="dark"] .verdict.bad{background:#3a2530;border-color:#5f2634;color:#f2909d}
+  html[data-theme="dark"] button.mini{background:#1f2430}
 </style></head>
 <body>
 <header>
@@ -379,6 +401,10 @@ $('#sbT').addEventListener('change',()=>fillSlots('sbT','sbS'));
 $('#asT').addEventListener('change',()=>fillSlots('asT','asS'));
 $('#swapBtn').addEventListener('click',doSwap);
 $('#autoBtn').addEventListener('click',autoSearch);
+// ---------- 테마 (부모 앱과 동기화) ----------
+function applyTheme(t){ document.documentElement.setAttribute('data-theme', t==='dark'?'dark':'light'); }
+const _urlTheme=new URLSearchParams(location.search).get('theme'); if(_urlTheme) applyTheme(_urlTheme);
+window.addEventListener('message',e=>{ if(e.data&&e.data.type==='theme') applyTheme(e.data.theme); });
 boot();
 </script>
 </body></html>
