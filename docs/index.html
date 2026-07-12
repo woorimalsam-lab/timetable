@@ -53,16 +53,20 @@
   td.pick:hover{outline:2px dashed var(--ac);outline-offset:-2px}
   td.sel{background:#ede9fe;outline:2px solid var(--sw);outline-offset:-2px}
   td.sel .cls{color:var(--sw)}
-  td.okc{background:#e7f8ee;cursor:pointer}
-  td.okc:hover{outline:2px solid var(--ok);outline-offset:-2px}
-  td.okc .mk{display:block;color:var(--ok);font-weight:700;font-size:12px;margin-top:2px}
-  td.noc{background:#f8fafc;cursor:pointer}
-  td.noc .cls,td.noc .sub{color:#b6bcc7}
-  td.noc .mk{display:block;color:#cbd5e1;font-weight:700;font-size:12px;margin-top:2px}
+  td.etgt{cursor:pointer;background:#f6fef9}
+  td.etgt:hover{outline:2px dashed var(--ok);outline-offset:-2px}
+  td.etgt .mk{color:#86d3a5;font-weight:700}
+  .planbar{font-size:13px;font-weight:600;margin:12px 0 8px}
+  .planrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;margin-bottom:6px;font-size:13px;background:#fff}
+  .ptag{display:inline-block;border-radius:4px;padding:1px 7px;font-size:11px;color:#fff;margin-right:6px;white-space:nowrap}
+  .ptag.mv{background:var(--ac)}
+  .ptag.p2{background:var(--ok)}
+  .ptag.p3{background:#d97706}
+  #exPlans{max-height:380px;overflow:auto}
   .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:#6b7280;margin:8px 0}
   .legend span{display:inline-flex;align-items:center;gap:5px}
   .lg{width:12px;height:12px;border-radius:3px;display:inline-block}
-  #grid,#logResult,.grids>div,#exMyGrid,#exClsGrid{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #grid,#logResult,.grids>div,#exMyGrid{overflow-x:auto;-webkit-overflow-scrolling:touch}
   @media (max-width:560px){
     body{-webkit-text-size-adjust:100%}
     header{padding:12px 14px}
@@ -84,6 +88,7 @@
     .row button.act{flex-basis:100%}
     .grids{flex-direction:column}
     .grids>div{min-width:0}
+    .planrow{font-size:12px}
   }
   /* ===== 다크 모드 (부모 앱에서 ?theme=dark 또는 postMessage로 전달) ===== */
   html[data-theme="dark"]{--bd:#2a2f3a;--hd:#262c38;background:#171a21}
@@ -108,11 +113,9 @@
   html[data-theme="dark"] .verdict.bad{background:#3a2530;border-color:#5f2634;color:#f2909d}
   html[data-theme="dark"] button.mini{background:#1f2430}
   html[data-theme="dark"] td.sel{background:#2e2743}
-  html[data-theme="dark"] td.okc{background:#12301f}
-  html[data-theme="dark"] td.okc .mk{color:#5fd08a}
-  html[data-theme="dark"] td.noc{background:#1b202b}
-  html[data-theme="dark"] td.noc .cls,html[data-theme="dark"] td.noc .sub{color:#5b6270}
-  html[data-theme="dark"] td.noc .mk{color:#3a4250}
+  html[data-theme="dark"] td.etgt{background:#14231a}
+  html[data-theme="dark"] td.etgt .mk{color:#2f6b45}
+  html[data-theme="dark"] .planrow{background:#1f2430;border-color:var(--bd)}
   html[data-theme="dark"] .legend{color:#9aa3b2}
 </style></head>
 <body>
@@ -142,24 +145,20 @@
     </p>
   </section>
 
-  <!-- 교환 도우미 (컴시간식 그리드 조회) -->
+  <!-- 교환 도우미 (컴시간식: 내 수업 → 빈 칸 이동) -->
   <section id="panel-swap" class="hidden">
     <p class="hint" style="margin-top:0">※ 실제 컴시간을 바꾸지 않습니다. 교환 전 <b>겹침 여부만</b> 미리 확인하는 용도입니다.</p>
 
     <div class="tool">
       <h2>수업 교환 조회</h2>
       <div class="row"><b>교사</b><select id="exT"></select></div>
-      <p class="meta">① 아래 시간표에서 <b>바꾸고 싶은 수업</b>을 클릭하세요.</p>
-      <div id="exMyGrid"></div>
-      <div id="exClsWrap" class="hidden">
-        <p class="meta" id="exClsTitle" style="margin-top:16px"></p>
-        <div class="legend">
-          <span><i class="lg" style="background:#ede9fe;border:1px solid #7c3aed"></i>내가 선택한 수업</span>
-          <span><i class="lg" style="background:#e7f8ee;border:1px solid #16a34a"></i>교환 가능 ○ (클릭=미리보기)</span>
-          <span><i class="lg" style="background:#f8fafc;border:1px solid #d9dde3"></i>교환 불가 × (클릭=이유)</span>
-        </div>
-        <div id="exClsGrid"></div>
+      <p class="meta">① <b>옮기고 싶은 내 수업</b>을 클릭 → ② <b>옮겨갈 빈 칸</b>(연두색)을 클릭하세요.</p>
+      <div class="legend">
+        <span><i class="lg" style="background:#ede9fe;border:1px solid #7c3aed"></i>선택한 수업</span>
+        <span><i class="lg" style="background:#f6fef9;border:1px solid #86d3a5"></i>이동 후보 빈 칸(클릭)</span>
       </div>
+      <div id="exMyGrid"></div>
+      <div id="exPlans"></div>
       <div id="swapResult"></div>
     </div>
 
@@ -184,6 +183,7 @@ const $=s=>document.querySelector(s);
 const DEFAULT_TEACHER='김수*';   // 처음 열 때 기본 선택 교사
 let code=null, current=null, schoolName='', idx=null, sel={teacher:DEFAULT_TEACHER,cls:null}, lastSwap=null;
 let exSel=null;                  // 교환 조회에서 선택한 내 수업 {d,p}
+let exPlans=[];                  // 계산된 교환 방안 목록
 
 // ---------- 공통 조회 헬퍼 ----------
 const occ = tidx => (current.per_teacher[tidx]||[]);
@@ -264,15 +264,14 @@ function gridHTML(map){       // map: key -> {top, bottom, changed, swap}
   return html+'</tbody></table>';
 }
 
-// ---------- 교환 도우미 (컴시간식) ----------
+// ---------- 교환 도우미 (컴시간식: 수업 → 빈 칸) ----------
 function setupSwapTab(){
   const opts=current.teachers.map(t=>`<option value="${t.idx}">${t.name}</option>`).join('');
   $('#exT').innerHTML=opts;
   const def=current.teachers.find(t=>t.name===DEFAULT_TEACHER);
   if(def) $('#exT').value=def.idx;
-  exSel=null;
-  $('#exClsWrap').classList.add('hidden');
-  $('#swapResult').innerHTML='';
+  exSel=null; exPlans=[];
+  $('#exPlans').innerHTML=''; $('#swapResult').innerHTML='';
   renderMyGrid();
   $('#fd').innerHTML=DAYS.map((d,i)=>`<option value="${i}">${d}</option>`).join('');
   $('#fp').innerHTML=Array.from({length:maxP()},(_,p)=>`<option value="${p}">${p+1}교시</option>`).join('');
@@ -290,75 +289,89 @@ function renderMyGrid(){
       if(c){
         const selc = exSel&&exSel.d===d&&exSel.p===p?' sel':'';
         html+=`<td class="pick${selc}" data-d="${d}" data-p="${p}"><span class="cls">${c.cls}</span><span class="sub">${c.sub}</span></td>`;
-      }else html+='<td class="empty">·</td>';
+      }else if(exSel){
+        html+=`<td class="etgt" data-d="${d}" data-p="${p}"><span class="mk">＋</span></td>`;
+      }else{
+        html+='<td class="empty">·</td>';
+      }
     }
     html+='</tr>';
   }
   $('#exMyGrid').innerHTML=html+'</tbody></table>';
 }
-function renderClsGrid(){
-  const tidx=+$('#exT').value;
-  const L1=entryAt(tidx,exSel.d,exSel.p);
-  if(!L1){ $('#exClsWrap').classList.add('hidden'); return; }
-  const cls=L1.cls, d1=exSel.d, p1=exSel.p;
-  $('#exClsTitle').innerHTML=`② <b>${cls}반</b> 주간 시간표입니다. 기준 수업: <b>${nm(tidx)}</b> · ${DAYS[d1]} ${p1+1}교시 ${L1.sub}`;
-  const cmap={};
-  current.teachers.forEach(t=>occ(t.idx).forEach(e=>{ if(e.cls===cls) cmap[e.day+'_'+e.period]={t:t.idx,name:t.name,sub:e.sub}; }));
-  const times=current.period_times||[];
-  let html='<table><thead><tr><th class="pcol">교시</th>'+DAYS.map(d=>`<th>${d}</th>`).join('')+'</tr></thead><tbody>';
-  for(let p=0;p<maxP();p++){
-    html+=`<tr><td class="pcol">${p+1}<span class="ptime">${times[p]||''}</span></td>`;
-    for(let d=0;d<5;d++){
-      const c=cmap[d+'_'+p];
-      if(!c){ html+='<td class="empty">·</td>'; continue; }
-      if(d===d1&&p===p1){ html+=`<td class="sel"><span class="cls">${c.sub}</span><span class="sub">${c.name}</span></td>`; continue; }
-      const r=computeSwap(tidx,d1,p1,c.t,d,p);
-      const ok=r&&!r.invalid&&r.warns.length===0;
-      html+=`<td class="${ok?'okc':'noc'}" data-d="${d}" data-p="${p}" data-t="${c.t}"><span class="cls">${c.sub}</span><span class="sub">${c.name}</span><span class="mk">${ok?'○':'×'}</span></td>`;
-    }
-    html+='</tr>';
+// 내 수업(d1,p1,반C)을 빈 칸(d2,p2)으로 옮기는 교환 방안 계산
+function computePlans(d2,p2){
+  const T1=+$('#exT').value;
+  const {d:d1,p:p1}=exSel;
+  const L1=entryAt(T1,d1,p1);
+  if(!L1) return [];
+  const C=L1.cls;
+  const plans=[];
+  const T2=classAt(C,d2,p2);   // 그 시간에 이 반을 가르치는 교사
+  if(!T2){
+    // 반도 비어 있음 → 단순 이동
+    plans.push({type:'mv',steps:[{t:T1,f:{d:d1,p:p1},to:{d:d2,p:p2},cls:C,sub:L1.sub}]});
+    return plans;
   }
-  $('#exClsGrid').innerHTML=html+'</tbody></table>';
-  $('#exClsWrap').classList.remove('hidden');
+  // 2인 교환: T2가 내 원래 시간에 비어 있으면 맞교환
+  if(!entryAt(T2.idx,d1,p1)){
+    plans.push({type:'p2',steps:[
+      {t:T1,f:{d:d1,p:p1},to:{d:d2,p:p2},cls:C,sub:L1.sub},
+      {t:T2.idx,f:{d:d2,p:p2},to:{d:d1,p:p1},cls:C,sub:T2.sub}]});
+  }
+  // 3인 교환: 같은 반의 제3 수업(T3)을 끼워 회전
+  const slots=[];
+  current.teachers.forEach(t=>occ(t.idx).forEach(e=>{ if(e.cls===C) slots.push({t:t.idx,sub:e.sub,d:e.day,p:e.period}); }));
+  slots.forEach(s=>{
+    if((s.d===d1&&s.p===p1)||(s.d===d2&&s.p===p2)) return;
+    if(s.t===T1||s.t===T2.idx) return;
+    if(entryAt(T2.idx,s.d,s.p)) return;   // T2가 제3 시간에 비어야
+    if(entryAt(s.t,d1,p1)) return;        // T3가 내 원래 시간에 비어야
+    plans.push({type:'p3',steps:[
+      {t:T1,f:{d:d1,p:p1},to:{d:d2,p:p2},cls:C,sub:L1.sub},
+      {t:T2.idx,f:{d:d2,p:p2},to:{d:s.d,p:s.p},cls:C,sub:T2.sub},
+      {t:s.t,f:{d:s.d,p:s.p},to:{d:d1,p:p1},cls:C,sub:s.sub}]});
+  });
+  return plans;
 }
-function computeSwap(aT,d1,p1,bT,d2,p2){
-  const L1=entryAt(aT,d1,p1), L2=entryAt(bT,d2,p2);
-  if(!L1||!L2) return null;
-  if(aT===bT&&d1===d2&&p1===p2) return {invalid:1};
-  const mo=[{t:aT,d:d1,p:p1},{t:bT,d:d2,p:p2}];
-  const isOut=(t,d,p)=>mo.some(m=>m.t===t&&m.d===d&&m.p===p);
-  const warns=[];
-  const aC=entryAt(aT,d2,p2); if(aC&&!isOut(aT,d2,p2)) warns.push(`${nm(aT)} 교사가 ${DAYS[d2]} ${p2+1}교시에 이미 수업(${aC.cls} ${aC.sub})이 있습니다.`);
-  const bC=entryAt(bT,d1,p1); if(bC&&!isOut(bT,d1,p1)) warns.push(`${nm(bT)} 교사가 ${DAYS[d1]} ${p1+1}교시에 이미 수업(${bC.cls} ${bC.sub})이 있습니다.`);
-  const c1=classAt(L1.cls,d2,p2); if(c1&&!isOut(c1.idx,d2,p2)) warns.push(`${L1.cls}반이 ${DAYS[d2]} ${p2+1}교시에 이미 수업(${c1.sub}/${c1.name})이 있습니다.`);
-  const c2=classAt(L2.cls,d1,p1); if(c2&&!isOut(c2.idx,d1,p1)) warns.push(`${L2.cls}반이 ${DAYS[d1]} ${p1+1}교시에 이미 수업(${c2.sub}/${c2.name})이 있습니다.`);
-  return {L1,L2,warns,sameT:aT===bT};
+function renderPlans(d2,p2){
+  const T1=+$('#exT').value;
+  const L1=entryAt(T1,exSel.d,exSel.p);
+  exPlans=computePlans(d2,p2);
+  const n2=exPlans.filter(p=>p.type==='p2').length;
+  const n3=exPlans.filter(p=>p.type==='p3').length;
+  const nm2=exPlans.filter(p=>p.type==='mv').length;
+  const head=`<p class="planbar">"${nm(T1)} · ${DAYS[exSel.d]} ${exSel.p+1}교시 ${L1.cls} ${L1.sub}" → ${DAYS[d2]} ${p2+1}교시 이동: `+
+    (exPlans.length? `가능한 방법 <b>${exPlans.length}건</b> (단순이동 ${nm2} · 2인 교환 ${n2} · 3인 교환 ${n3})`
+                   : `<span style="color:var(--chg)">가능한 교환이 없습니다</span>`)+`</p>`;
+  const rows=exPlans.map((pl,i)=>{
+    const tag = pl.type==='mv'?'<span class="ptag mv">이동</span>':(pl.type==='p2'?'<span class="ptag p2">2인 교환</span>':'<span class="ptag p3">3인 교환</span>');
+    const others=pl.steps.slice(1).map(s=>`${nm(s.t)}(${DAYS[s.f.d]}${s.f.p+1}교시 ${s.sub}→${DAYS[s.to.d]}${s.to.p+1}교시)`).join(' · ');
+    const label = pl.type==='mv' ? '그 시간에 반 수업이 없어 그대로 이동' : others;
+    return `<div class="planrow"><span>${tag}${label}</span><button class="mini" data-i="${i}">미리보기</button></div>`;
+  }).join('');
+  $('#exPlans').innerHTML=head+rows;
+  $('#swapResult').innerHTML='';
+  $('#exPlans').querySelectorAll('button.mini').forEach(b=>b.addEventListener('click',()=>previewPlan(exPlans[+b.dataset.i])));
+  if(exPlans.length===1) previewPlan(exPlans[0]);   // 방안이 하나뿐이면 바로 미리보기
 }
-function previewSwap(aT,d1,p1,bT,d2,p2){
-  const r=computeSwap(aT,d1,p1,bT,d2,p2);
-  if(!r||r.invalid){ $('#swapResult').innerHTML='<p class="meta">교환 정보를 계산할 수 없습니다.</p>'; return; }
-  const {L1,L2,warns,sameT}=r;
-  function afterMap(tidx,removes,adds){
+function previewPlan(plan){
+  const byT={};
+  plan.steps.forEach(s=>{ (byT[s.t]=byT[s.t]||{rm:[],ad:[]}); byT[s.t].rm.push(s.f); byT[s.t].ad.push({d:s.to.d,p:s.to.p,cls:s.cls,sub:s.sub}); });
+  const grids=Object.keys(byT).map(t=>{
     const m={};
-    occ(tidx).forEach(e=>{ if(!removes.some(x=>x.d===e.day&&x.p===e.period)) m[e.day+'_'+e.period]={top:e.cls,bottom:e.sub,changed:e.changed}; });
-    adds.forEach(a=>{ m[a.d+'_'+a.p]={top:a.cls,bottom:a.sub,swap:1}; });
-    return m;
-  }
-  let gridsHTML;
-  if(sameT){
-    const m=afterMap(aT,[{d:d1,p:p1},{d:d2,p:p2}],[{d:d2,p:p2,cls:L1.cls,sub:L1.sub},{d:d1,p:p1,cls:L2.cls,sub:L2.sub}]);
-    gridsHTML=`<div><h3>${nm(aT)} (교환 후)</h3>${gridHTML(m)}</div>`;
-  }else{
-    const ma=afterMap(aT,[{d:d1,p:p1}],[{d:d2,p:p2,cls:L1.cls,sub:L1.sub}]);
-    const mb=afterMap(bT,[{d:d2,p:p2}],[{d:d1,p:p1,cls:L2.cls,sub:L2.sub}]);
-    gridsHTML=`<div><h3>${nm(aT)} (교환 후)</h3>${gridHTML(ma)}</div><div><h3>${nm(bT)} (교환 후)</h3>${gridHTML(mb)}</div>`;
-  }
-  const desc=`${nm(aT)}의 [${DAYS[d1]} ${p1+1}교시 ${L1.cls} ${L1.sub}] ↔ ${nm(bT)}의 [${DAYS[d2]} ${p2+1}교시 ${L2.cls} ${L2.sub}]`;
-  const verdict = warns.length
-    ? `<div class="verdict bad">⚠ 겹침 ${warns.length}건 — 이대로 교환하면 충돌합니다.<ul>${warns.map(w=>`<li>${w}</li>`).join('')}</ul></div>`
-    : `<div class="verdict ok">✅ 겹침 없음 — 교환 가능합니다.</div>`;
-  lastSwap={aT,d1,p1,bT,d2,p2,L1,L2,warns,desc,ok:warns.length===0};
-  $('#swapResult').innerHTML=`<p class="meta" style="margin-top:12px">③ ${desc}</p>${verdict}<div class="grids">${gridsHTML}</div>`+
+    occ(+t).forEach(e=>{ if(!byT[t].rm.some(x=>x.d===e.day&&x.p===e.period)) m[e.day+'_'+e.period]={top:e.cls,bottom:e.sub,changed:e.changed}; });
+    byT[t].ad.forEach(a=>{ m[a.d+'_'+a.p]={top:a.cls,bottom:a.sub,swap:1}; });
+    return `<div><h3>${nm(+t)} (교환 후)</h3>${gridHTML(m)}</div>`;
+  }).join('');
+  const label = plan.type==='mv'?'단순 이동':(plan.type==='p2'?'2인 교환':'3인 교환');
+  const npeople = plan.steps.length;
+  const desc = plan.steps.map(s=>`${nm(s.t)}: ${DAYS[s.f.d]} ${s.f.p+1}교시 → ${DAYS[s.to.d]} ${s.to.p+1}교시 (${s.cls} ${s.sub})`).join('  ·  ');
+  lastSwap={desc:`[${label}] ${desc}`, people:npeople, ok:true, verdict:label};
+  $('#swapResult').innerHTML=
+    `<p class="meta" style="margin-top:12px">③ ${desc}</p>`+
+    `<div class="verdict ok">✅ ${label} — 움직여야 하는 교사 <b>${npeople}명</b>, 겹침 없음</div>`+
+    `<div class="grids">${grids}</div>`+
     `<div class="row" style="margin-top:12px"><input id="swapMemo" placeholder="메모(선택)" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--bd);border-radius:8px"><button class="act" id="saveBtn">이 교환 기록 저장</button></div><div id="saveMsg" class="meta"></div>`;
   $('#saveBtn').addEventListener('click',saveSwap);
   $('#swapResult').scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -377,12 +390,12 @@ const loadLS=()=>{ try{ return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); }
 const saveLS=l=>localStorage.setItem(LS_KEY,JSON.stringify(l));
 function saveSwap(){
   if(!lastSwap) return;
-  const s=lastSwap, lst=loadLS();
-  lst.push({id:(lst.at(-1)?.id||0)+1, saved_at:new Date().toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'}),
+  const lst=loadLS();
+  lst.push({id:(lst.at(-1)?.id||0)+1,
+    saved_at:new Date().toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'}),
     week_label:current.week_label,
-    a_name:nm(s.aT), a_day:s.d1, a_period:s.p1, a_cls:s.L1.cls, a_sub:s.L1.sub,
-    b_name:nm(s.bT), b_day:s.d2, b_period:s.p2, b_cls:s.L2.cls, b_sub:s.L2.sub,
-    ok:s.ok, verdict:s.ok?'교환 가능':('겹침 '+s.warns.length+'건'), memo:$('#swapMemo').value||''});
+    desc:lastSwap.desc, people:lastSwap.people,
+    ok:lastSwap.ok, verdict:lastSwap.verdict, memo:$('#swapMemo').value||''});
   saveLS(lst);
   $('#saveMsg').textContent='저장되었습니다. (상단 [교환 내역] 탭에서 확인 · 이 기기에만 저장)';
 }
@@ -390,13 +403,18 @@ function loadLog(){
   const list=loadLS();
   if(!list.length){ $('#logResult').innerHTML='<p class="meta">저장된 교환 내역이 없습니다.</p>'; return; }
   list.sort((a,b)=>(b.id||0)-(a.id||0));
-  const rows=list.map(r=>`<tr>
+  const rows=list.map(r=>{
+    const content = r.desc
+      ? r.desc
+      : `${r.a_name} [${DAYS[r.a_day]} ${r.a_period+1}교시 ${r.a_cls} ${r.a_sub}] ↔ ${r.b_name} [${DAYS[r.b_day]} ${r.b_period+1}교시 ${r.b_cls} ${r.b_sub}]`;
+    return `<tr>
     <td>${r.saved_at||''}</td>
     <td>${r.week_label||''}</td>
-    <td style="text-align:left">${r.a_name} [${DAYS[r.a_day]} ${r.a_period+1}교시 ${r.a_cls} ${r.a_sub}]<br>↔ ${r.b_name} [${DAYS[r.b_day]} ${r.b_period+1}교시 ${r.b_cls} ${r.b_sub}]</td>
-    <td>${r.ok?'<span style="color:#16a34a">가능</span>':'<span style="color:#e11d48">'+(r.verdict||'겹침')+'</span>'}</td>
+    <td style="text-align:left">${content}</td>
+    <td>${r.ok?'<span style="color:#16a34a">'+(r.verdict||'가능')+'</span>':'<span style="color:#e11d48">'+(r.verdict||'겹침')+'</span>'}</td>
     <td style="text-align:left">${r.memo||''}</td>
-    <td><button class="mini" data-id="${r.id}">삭제</button></td></tr>`).join('');
+    <td><button class="mini" data-id="${r.id}">삭제</button></td></tr>`;
+  }).join('');
   $('#logResult').innerHTML=`<table><thead><tr><th>저장시각</th><th>주차</th><th>교환 내용</th><th>판정</th><th>메모</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
   $('#logResult').querySelectorAll('button.mini').forEach(b=>b.addEventListener('click',()=>{
     if(!confirm('이 교환 내역을 삭제할까요?')) return;
@@ -421,16 +439,19 @@ document.querySelectorAll('.tab').forEach(tb=>tb.addEventListener('click',()=>{
 $('#week').addEventListener('change',loadWeek);
 $('#viewmode').addEventListener('change',()=>{ fillTarget(); render(); });
 $('#target').addEventListener('change',render);
-$('#exT').addEventListener('change',()=>{ exSel=null; $('#exClsWrap').classList.add('hidden'); $('#swapResult').innerHTML=''; renderMyGrid(); });
+$('#exT').addEventListener('change',()=>{ exSel=null; exPlans=[]; $('#exPlans').innerHTML=''; $('#swapResult').innerHTML=''; renderMyGrid(); });
 $('#exMyGrid').addEventListener('click',e=>{
-  const td=e.target.closest('td.pick'); if(!td) return;
-  exSel={d:+td.dataset.d,p:+td.dataset.p};
-  $('#swapResult').innerHTML='';
-  renderMyGrid(); renderClsGrid();
-});
-$('#exClsGrid').addEventListener('click',e=>{
-  const td=e.target.closest('td.okc,td.noc'); if(!td||!exSel) return;
-  previewSwap(+$('#exT').value, exSel.d, exSel.p, +td.dataset.t, +td.dataset.d, +td.dataset.p);
+  const pick=e.target.closest('td.pick');
+  if(pick){                       // 수업 클릭 = (재)선택
+    exSel={d:+pick.dataset.d,p:+pick.dataset.p};
+    exPlans=[]; $('#exPlans').innerHTML=''; $('#swapResult').innerHTML='';
+    renderMyGrid();
+    return;
+  }
+  const tgt=e.target.closest('td.etgt');
+  if(tgt&&exSel){                 // 빈 칸 클릭 = 교환 방안 계산
+    renderPlans(+tgt.dataset.d,+tgt.dataset.p);
+  }
 });
 $('#fd').addEventListener('change',freeSearch);
 $('#fp').addEventListener('change',freeSearch);
