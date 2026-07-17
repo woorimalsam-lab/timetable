@@ -1192,7 +1192,7 @@ function segmentLines(strokes){
   const items=strokes.map((s,idx)=>{const bb=strokeBBox(s);return{s,idx,cy:(bb.y+bb.y2)/2,h:bb.y2-bb.y};});
   if(!items.length) return [];
   const avgH=items.reduce((a,b)=>a+b.h,0)/items.length;
-  const thr=Math.max(24, avgH*0.7);
+  const thr=Math.max(30, avgH*1.1);   // 한 줄이 잘못 쪼개지지 않도록 넉넉한 임계값
   const byY=[...items].sort((a,b)=>a.cy-b.cy);
   const lines=[]; let cur=[], lineMax=-1e9;
   for(const it of byY){
@@ -1204,31 +1204,47 @@ function segmentLines(strokes){
   lines.sort((a,b)=>Math.min(...a.map(o=>o.cy))-Math.min(...b.map(o=>o.cy)));
   return lines.map(ln=>ln.sort((a,b)=>a.idx-b.idx).map(o=>o.s));
 }
-async function recognizeGroup(strokes, lang){
-  if(window.__mockRecognize) return await window.__mockRecognize(strokes,lang);
+function buildInkBody(strokes, lang){
   let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
   strokes.forEach(st=>pointsOf(st).forEach(p=>{minx=Math.min(minx,p.x);miny=Math.min(miny,p.y);maxx=Math.max(maxx,p.x);maxy=Math.max(maxy,p.y);}));
   const w=Math.max(1,maxx-minx), h=Math.max(1,maxy-miny);
-  // 타임스탬프를 스트로크를 넘어 연속(monotonic)으로 → 연속 필기 인식 정확도↑
-  let clock=0;
+  const scale=clamp(240/h, 0.6, 8);   // 표준 높이(~240)로 정규화 → 크게/작게 써도 인식 안정
+  let clock=0;                        // 타임스탬프는 스트로크를 넘어 단조 증가(연속 필기)
   const ink=strokes.map(st=>{const pts=pointsOf(st);const xs=[],ys=[],ts=[];
-    pts.forEach(p=>{xs.push(Math.round(p.x-minx));ys.push(Math.round(p.y-miny));ts.push(clock);clock+=10;}); clock+=60; return [xs,ys,ts];});
-  const body={options:"enable_pre_space",requests:[{writing_guide:{writing_area_width:Math.round(w),writing_area_height:Math.round(h),writing_area_top:0,writing_area_left:0},ink,language:lang,max_num_results:10}]};
-  const ctrl=new AbortController(); const timer=setTimeout(()=>ctrl.abort(),9000);
-  try{
-    const res=await fetch(`https://inputtools.google.com/request?itc=${lang}-t-i0-handwrit&app=ssamnote`,
-      {method:'POST',body:JSON.stringify(body),signal:ctrl.signal});
-    const data=await res.json();
-    if(data[0]==='SUCCESS' && data[1] && data[1][0]) return data[1][0][1]||[];
-    return [];
-  } finally { clearTimeout(timer); }
+    pts.forEach(p=>{xs.push(Math.round((p.x-minx)*scale));ys.push(Math.round((p.y-miny)*scale));ts.push(clock);clock+=8;}); clock+=40; return [xs,ys,ts];});
+  return {options:"enable_pre_space",requests:[{
+    writing_guide:{writing_area_width:Math.round(w*scale), writing_area_height:Math.round(h*scale)},
+    ink, language:lang}]};
+}
+async function recognizeGroup(strokes, lang){
+  if(window.__mockRecognize) return await window.__mockRecognize(strokes,lang);
+  const body=JSON.stringify(buildInkBody(strokes,lang));
+  // 널리 검증된 엔드포인트 우선 + 폴백. 헤더 없이 text/plain → CORS 프리플라이트 회피.
+  const urls=['https://www.google.com/inputtools/request?ime=handwriting&app=mobilesearch&dbg=1&cs=1&oe=UTF-8',
+              `https://inputtools.google.com/request?itc=${lang}-t-i0-handwrit&app=ssamnote`];
+  for(const url of urls){
+    const ctrl=new AbortController(); const timer=setTimeout(()=>ctrl.abort(),9000);
+    try{
+      const res=await fetch(url,{method:'POST',body,signal:ctrl.signal});
+      const data=await res.json();
+      if(data[0]==='SUCCESS' && data[1] && data[1][0] && data[1][0][1] && data[1][0][1].length){ clearTimeout(timer); return data[1][0][1]; }
+    }catch(_){}
+    finally{ clearTimeout(timer); }
+  }
+  return [];
+}
+// 한 줄 인식: 선택 언어 실패 시 다른 언어로 자동 재시도
+async function recognizeLine(strokes, lang){
+  let c=await recognizeGroup(strokes,lang);
+  if(!c.length){ const alt=lang==='ko'?'en':'ko'; c=await recognizeGroup(strokes,alt); }
+  return c;
 }
 // 반환: {text:'여러 줄', cands:[첫 줄 후보들], lines:n}
 async function recognizeInk(strokes, lang){
   const lines=segmentLines(strokes);
-  if(lines.length<=1){ const c=await recognizeGroup(strokes,lang); return {text:(c[0]||''), cands:c, lines:1}; }
+  if(lines.length<=1){ const c=await recognizeLine(strokes,lang); return {text:(c[0]||''), cands:c, lines:1}; }
   const outs=[]; let first=[];
-  for(const ln of lines){ const c=await recognizeGroup(ln,lang); outs.push(c[0]||''); if(!first.length)first=c; }
+  for(const ln of lines){ const c=await recognizeLine(ln,lang); outs.push(c[0]||''); if(!first.length)first=c; }
   return {text:outs.join('\n'), cands:first, lines:lines.length};
 }
 let convLang='ko';
