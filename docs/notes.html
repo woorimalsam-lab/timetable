@@ -272,6 +272,14 @@
   #selbar button{padding:8px 12px;border-radius:8px;color:var(--toolink);font-size:13px;font-weight:600;display:flex;gap:6px;align-items:center}
   #selbar button:hover{background:rgba(255,255,255,.1)}
   #selbar button.danger{color:#ff6b63}
+  /* 텍스트 선택 메뉴(텍스트 바로 위) */
+  #txtbar{position:absolute;z-index:25;background:var(--tool);border-radius:12px;box-shadow:var(--shadow);display:flex;gap:2px;padding:5px}
+  #txtbar button{padding:8px 11px;border-radius:8px;color:var(--toolink);font-size:13px;font-weight:600;display:flex;gap:5px;align-items:center;white-space:nowrap}
+  #txtbar button:hover{background:rgba(255,255,255,.12)}
+  #txtbar button.danger{color:#ff6b63}
+  #txtcolpop{position:absolute;z-index:26;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+             box-shadow:var(--shadow);padding:10px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px;width:216px}
+  #txtcolpop .swatch{width:26px;height:26px}
 
   .toast{position:absolute;bottom:84px;left:50%;transform:translateX(-50%);z-index:60;
          background:var(--tool);color:var(--toolink);padding:10px 16px;border-radius:12px;font-size:13px;font-weight:600;
@@ -528,6 +536,7 @@ function open(n){
   db.openTabs=openTabs; save();
   $('#library').classList.add('hidden'); $('#libbar').classList.add('hidden');
   $('#editor').classList.remove('hidden');
+  clearSelection(); clearTextSel();
   buildColorBar(); buildSizeBar(); setTool(tool);
   renderTabs(); fitPage(); refreshPageUI();
   scheduleRender();
@@ -583,6 +592,7 @@ function setTool(t){
   const active=document.querySelector(`#toolset .rtool[data-tool="${t}"]`);
   if(active) active.style.setProperty('--tool-color', showColor?color:'var(--accent)');
   if(t!=='lasso') clearSelection();
+  if(t!=='lasso'&&t!=='text') clearTextSel();
   if(t!=='text') commitText();
   closeToolPop();
   buildColorBar(); buildSizeBar();
@@ -720,9 +730,11 @@ function render(){
   if(active) drawStroke(ctx, active);
   for(const t of page.texts) drawTextObj(ctx, t);
   drawSelectionOutline(ctx);
+  drawTextSelection(ctx);
   ctx.restore();
   drawLassoPath();
   positionSelbar();
+  positionTxtbar();
 }
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 
@@ -860,10 +872,14 @@ function applyOp(op, dir){ // dir:  'undo' | 'redo'
     case 'textdel':  if(undo) page.texts.push(op.text); else page.texts=page.texts.filter(x=>x!==op.text); break;
     case 'textedit': op.text.text = undo?op.before:op.after; if(op.text.text==='') { /* keep */ } break;
     case 'textmove': { const dx=undo?-op.dx:op.dx, dy=undo?-op.dy:op.dy; op.text.x+=dx; op.text.y+=dy; break; }
+    case 'textmovemulti': { const dx=undo?-op.dx:op.dx, dy=undo?-op.dy:op.dy; op.texts.forEach(t=>{t.x+=dx;t.y+=dy;}); break; }
+    case 'textsize': op.texts.forEach((t,i)=>{ t.size = undo?op.before[i]:op.after[i]; }); break;
+    case 'textcolor': op.texts.forEach((t,i)=>{ t.color = undo?op.before[i]:op.after[i]; }); break;
+    case 'textdelmulti': if(undo){ page.texts.push(...op.texts); } else { page.texts=page.texts.filter(x=>!op.texts.includes(x)); } break;
     case 'clearpage': if(undo){ page.strokes.push(...op.strokes); page.texts.push(...op.texts); } else { page.strokes=[]; page.texts=[]; } break;
   }
 }
-function undo(){ ensureHist(); const op=page._undo.pop(); if(!op)return; applyOp(op,'undo'); page._redo.push(op); updateUndoUI(); markDirty(); clearSelection(); scheduleRender(); }
+function undo(){ ensureHist(); const op=page._undo.pop(); if(!op)return; applyOp(op,'undo'); page._redo.push(op); updateUndoUI(); markDirty(); clearSelection(); clearTextSel(); scheduleRender(); }
 function redo(){ ensureHist(); const op=page._redo.pop(); if(!op)return; applyOp(op,'redo'); page._undo.push(op); updateUndoUI(); markDirty(); scheduleRender(); }
 function updateUndoUI(){ ensureHist(); $('#undoBtn').disabled=!page._undo.length; $('#redoBtn').disabled=!page._redo.length; }
 $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo;
@@ -878,6 +894,8 @@ let lasso=null;                  // {pts:[...screen], }
 let selection=null;              // {strokes:[], moved:false, dx,dy}
 let selDrag=null;
 let textDrag=null;
+let textSel=[];                  // 선택된 텍스트 객체들(크기 조정/메뉴 대상)
+let textResize=null, textDragSel=null;
 
 board.addEventListener('pointerdown', onDown);
 board.addEventListener('pointermove', onMove);
@@ -898,11 +916,19 @@ function onDown(e){
   if(pointers.size===2){ cancelActive(); startPinch(); return; }
   if(pointers.size>2) return;
 
+  const p=toPage(l.x,l.y);
+
+  // 텍스트 선택 중이면: 우하단 핸들=크기조정 / 내부=이동 / 바깥=선택 해제
+  if(textSel.length){
+    const h=textHandleScreen();
+    if(h && Math.hypot(l.x-h.x, l.y-h.y) < 22){ beginTextResize(l); return; }
+    if(pointInTextUnion(p)){ textDragSel={lx:l.x,ly:l.y,moved:false,ox:textSel.map(t=>t.x),oy:textSel.map(t=>t.y)}; return; }
+    clearTextSel();
+  }
+
   // 손가락 입력: '손가락 그리기'가 꺼져 있거나 pan 도구면 캔버스 이동, 아니면 그리기
   const isTouch=e.pointerType==='touch';
   if(tool==='pan' || (isTouch && !fingerDraw)){ panning={x:l.x,y:l.y}; return; }
-
-  const p=toPage(l.x,l.y);
 
   if(tool==='pen'||tool==='highlighter'){
     active={id:uid(), tool, color:(tool==='highlighter'?color:color), size:(tool==='highlighter'?hlSize:penSize),
@@ -918,8 +944,8 @@ function onDown(e){
     else { clearSelection(); lasso={pts:[l], page:[p]}; }
   }else if(tool==='text'){
     const hit=hitText(p);
-    if(hit){ textDrag={t:hit, lx:l.x, ly:l.y, moved:false, ox:hit.x, oy:hit.y}; }
-    else openTextEditor(p.x,p.y,null);
+    if(hit){ selectTexts([hit]); textDragSel={lx:l.x,ly:l.y,moved:false,ox:[hit.x],oy:[hit.y]}; }
+    else { clearTextSel(); openTextEditor(p.x,p.y,null); }
   }
 }
 let penSeen=false, penDown=false, _penUpT=0;
@@ -936,11 +962,14 @@ function pressure(e,pt,start){
 }
 
 function onMove(e){
-  if(!pointers.has(e.pointerId) && !active && !panning && !lasso && !selDrag && !textDrag) return;
+  if(!pointers.has(e.pointerId) && !active && !panning && !lasso && !selDrag && !textDrag && !textResize && !textDragSel) return;
   const l=localXY(e);
   if(pointers.has(e.pointerId)) pointers.set(e.pointerId,l);
 
   if(pinch){ doPinch(); return; }
+  if(textResize){ doTextResize(l); return; }
+  if(textDragSel){ const dx=(l.x-textDragSel.lx)/view.s, dy=(l.y-textDragSel.ly)/view.s;
+    textSel.forEach(t=>{t.x+=dx;t.y+=dy;}); textDragSel.lx=l.x; textDragSel.ly=l.y; textDragSel.moved=true; scheduleRender(); return; }
   if(panning){ view.tx+=l.x-panning.x; view.ty+=l.y-panning.y; panning={x:l.x,y:l.y}; clampView(); scheduleRender(); return; }
 
   const p=toPage(l.x,l.y);
@@ -987,6 +1016,11 @@ function onUp(e){
   if(eraseBatch){ if(eraseBatch.length) pushUndo({t:'erase',strokes:eraseBatch}); eraseBatch=null; return; }
   if(panning){ panning=null; return; }
   if(selDrag){ if(selection.dx||selection.dy) pushUndo({t:'move',strokes:selection.strokes.slice(),dx:selection.dx,dy:selection.dy}); selection.dx=selection.dy=0; selDrag=null; return; }
+  if(textResize){ const after=textSel.map(t=>t.size);
+    if(after.some((s,i)=>s!==textResize.before[i])) pushUndo({t:'textsize',texts:textSel.slice(),before:textResize.before,after});
+    textResize=null; scheduleRender(); return; }
+  if(textDragSel){ if(textDragSel.moved){ const t0=textSel[0]; pushUndo({t:'textmovemulti',texts:textSel.slice(),dx:t0.x-textDragSel.ox[0],dy:t0.y-textDragSel.oy[0]}); }
+    textDragSel=null; return; }
   if(textDrag){ const t=textDrag.t;
     if(textDrag.moved){ pushUndo({t:'textmove',text:t,dx:t.x-textDrag.ox,dy:t.y-textDrag.oy}); }
     else { openTextEditor(t.x,t.y,t); }
@@ -1001,6 +1035,8 @@ function cancelActive(){
   if(panning){ panning=null; }
   if(selDrag){ selDrag=null; }
   if(textDrag){ textDrag=null; }
+  if(textResize){ textResize=null; }
+  if(textDragSel){ textDragSel=null; }
   scheduleRender();
 }
 
@@ -1050,14 +1086,19 @@ function drawLassoPath(){
   ctx.setLineDash([]); ctx.restore();
 }
 function finishLasso(){
-  const poly=lasso.page; const picked=[];
+  const poly=lasso.page; const picked=[]; const pickedText=[];
   if(poly.length>=3){
     for(const st of page.strokes){
       if(pointsOf(st).every(pt=>pointInPoly(pt,poly))) picked.push(st);
     }
+    for(const t of page.texts){ const bb=textBBox(t);
+      const c={x:(bb.x+bb.x2)/2,y:(bb.y+bb.y2)/2};
+      if(pointInPoly(c,poly)) pickedText.push(t);   // 텍스트는 중심이 올가미 안이면 선택
+    }
   }
-  lasso=null;
-  if(picked.length){ selection={strokes:picked,dx:0,dy:0}; } else clearSelection();
+  lasso=null; clearSelection(); clearTextSel();
+  if(pickedText.length){ selectTexts(pickedText); }   // 텍스트를 묶으면 텍스트 위에 메뉴 표시
+  else if(picked.length){ selection={strokes:picked,dx:0,dy:0}; }
   scheduleRender();
 }
 function pointInPoly(p,poly){
@@ -1190,10 +1231,82 @@ function insertText(str, strokes, bb){
   page.strokes=page.strokes.filter(s=>!strokes.includes(s));
   page.texts.push(t);
   pushUndo({t:'convert',strokes:strokes.slice(),text:t});
-  clearSelection(); scheduleRender();
+  clearSelection(); selectTexts([t]); scheduleRender();   // 변환 직후 바로 크기 조정/메뉴 가능
 }
 function commonColor(strokes){ const m={}; strokes.forEach(s=>{m[s.color]=(m[s.color]||0)+1;});
   return Object.keys(m).sort((a,b)=>m[b]-m[a])[0]||COLORS[0]; }
+
+/* ============================ 텍스트 선택 · 크기 조정 · 메뉴 ============================ */
+function textBBox(t){
+  ctx.save(); ctx.font=`${t.size}px -apple-system,'Malgun Gothic',sans-serif`;
+  const lines=t.text.split('\n'); const lh=t.size*1.3; let w=0;
+  lines.forEach(ln=>{ w=Math.max(w, ctx.measureText(ln).width); });
+  ctx.restore();
+  return {x:t.x, y:t.y, x2:t.x+Math.max(w,t.size*0.6), y2:t.y+lines.length*lh};
+}
+function textUnionBBox(){ let a=1e9,b=1e9,cX=-1e9,dY=-1e9;
+  textSel.forEach(t=>{const bb=textBBox(t);a=Math.min(a,bb.x);b=Math.min(b,bb.y);cX=Math.max(cX,bb.x2);dY=Math.max(dY,bb.y2);});
+  return {x:a,y:b,x2:cX,y2:dY}; }
+function pointInTextUnion(p){ if(!textSel.length)return false; const bb=textUnionBBox();
+  return p.x>=bb.x-8&&p.x<=bb.x2+8&&p.y>=bb.y-8&&p.y<=bb.y2+8; }
+function textHandleScreen(){ if(!textSel.length)return null; const bb=textUnionBBox(); return toScreen(bb.x2+8,bb.y2+8); }
+function selectTexts(arr){ clearSelection(); textSel=arr.slice(); scheduleRender(); }
+function clearTextSel(){ if(textSel.length){ textSel=[]; $('#txtbar')?.remove(); scheduleRender(); } }
+function drawTextSelection(c){
+  if(!textSel.length)return; const bb=textUnionBBox();
+  c.save(); c.setLineDash([7,5]); c.strokeStyle=cssVar('--accent'); c.lineWidth=1.5/view.s;
+  c.strokeRect(bb.x-6,bb.y-6,(bb.x2-bb.x)+12,(bb.y2-bb.y)+12); c.setLineDash([]);
+  // 크기 조정 핸들(우하단)
+  const hx=bb.x2+8, hy=bb.y2+8, r=7/view.s;
+  c.fillStyle='#fff'; c.strokeStyle=cssVar('--accent'); c.lineWidth=2/view.s;
+  c.beginPath(); c.arc(hx,hy,r,0,7); c.fill(); c.stroke();
+  c.restore();
+}
+function beginTextResize(l){
+  const bb=textUnionBBox(); const anchor=toScreen(bb.x,bb.y);
+  const d0=Math.hypot(l.x-anchor.x, l.y-anchor.y)||1;
+  textResize={ax:anchor.x, ay:anchor.y, d0, base:textSel.map(t=>t.size), before:textSel.map(t=>t.size)};
+}
+function doTextResize(l){
+  const d=Math.hypot(l.x-textResize.ax, l.y-textResize.ay);
+  const ratio=clamp(d/textResize.d0, 0.2, 6);
+  textSel.forEach((t,i)=>{ t.size=clamp(Math.round(textResize.base[i]*ratio),8,300); });
+  scheduleRender();
+}
+function positionTxtbar(){
+  let bar=$('#txtbar');
+  if(!textSel.length){ bar?.remove(); return; }
+  if(!bar){ bar=el('div'); bar.id='txtbar';
+    bar.innerHTML=`<button data-a="edit">✏️ 편집</button><button data-a="dec">A−</button><button data-a="inc">A＋</button>`+
+      `<button data-a="color">🎨 색상</button><button data-a="del" class="danger">🗑 삭제</button><button data-a="done">✓</button>`;
+    stage.appendChild(bar);
+    bar.onclick=e=>{ const a=e.target.closest('button')?.dataset.a; if(!a)return;
+      if(a==='edit'){ const t=textSel[0]; if(t){ clearTextSel(); openTextEditor(t.x,t.y,t); } }
+      else if(a==='dec'||a==='inc'){ const f=a==='inc'?1.15:0.87; const before=textSel.map(t=>t.size);
+        textSel.forEach(t=>t.size=clamp(Math.round(t.size*f),8,300)); pushUndo({t:'textsize',texts:textSel.slice(),before,after:textSel.map(t=>t.size)}); scheduleRender(); }
+      else if(a==='color'){ openTextColorPop(bar); }
+      else if(a==='del'){ const arr=textSel.slice(); page.texts=page.texts.filter(x=>!arr.includes(x)); pushUndo({t:'textdelmulti',texts:arr}); clearTextSel(); }
+      else if(a==='done'){ clearTextSel(); }
+    };
+  }
+  const bb=textUnionBBox(); const s=toScreen(bb.x-6,bb.y-6);
+  bar.style.left=clamp(s.x,8,stage.clientWidth-Math.min(340,bar.offsetWidth||300)-8)+'px';
+  bar.style.top=Math.max(8, s.y-48)+'px';
+}
+function openTextColorPop(bar){
+  $('#txtcolpop')?.remove();
+  const pop=el('div'); pop.id='txtcolpop';
+  COLORS.forEach(col=>{ const s=el('div','swatch'+(col==='#ffffff'?' white':'')); s.style.background=col;
+    s.onclick=()=>{ const before=textSel.map(t=>t.color); textSel.forEach(t=>t.color=col);
+      pushUndo({t:'textcolor',texts:textSel.slice(),before,after:textSel.map(t=>t.color)}); pop.remove(); scheduleRender(); };
+    pop.appendChild(s); });
+  stage.appendChild(pop);
+  const r=bar.getBoundingClientRect(), sr=stage.getBoundingClientRect();
+  pop.style.left=clamp(r.left-sr.left,8,stage.clientWidth-pop.offsetWidth-8)+'px';
+  pop.style.top=(r.bottom-sr.top+6)+'px';
+  setTimeout(()=>{ const off=e=>{ if(!pop.contains(e.target)){ pop.remove(); document.removeEventListener('pointerdown',off,true);} };
+    document.addEventListener('pointerdown',off,true); },0);
+}
 
 /* ============================ 텍스트 ============================ */
 let tedit=null, teditText=null, teditPos=null;
@@ -1256,7 +1369,7 @@ $('#exportBtn').onclick=()=>{
 
 function refreshPageUI(){ $('#pageInd').textContent=`${pi+1} / ${nb.pages.length}`; updateUndoUI(); }
 function gotoPage(i){
-  commitText(); clearSelection();
+  commitText(); clearSelection(); clearTextSel();
   pi=clamp(i,0,nb.pages.length-1); page=nb.pages[pi];
   refreshPageUI(); fitPage(); scheduleRender();
   document.querySelectorAll('#plist .thumb').forEach((t,k)=>t.classList.toggle('on',k===pi));
