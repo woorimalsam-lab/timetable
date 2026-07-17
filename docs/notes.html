@@ -943,12 +943,18 @@ function onDown(e){
   const l=localXY(e);
   // 팜 리젝션: 펜으로 필기하는 동안 들어오는 손/손바닥 터치는 완전히 무시
   if(e.pointerType==='touch' && (penDown || penActiveRecently())) return;
+  // 펜으로 필기 중 또 다른 펜 접점(이벤트 겹침)이 들어오면 무시 → 연속필기가 끊기지 않도록
+  if(e.pointerType==='pen' && penDown && active) return;
   if(e.pointerType==='pen'){ penDown=true; penSeen=true; }
-  pointers.set(e.pointerId, l);
+  l.type=e.pointerType; pointers.set(e.pointerId, l);
   try{ board.setPointerCapture?.(e.pointerId); }catch(_){}
 
-  if(pointers.size===2){ cancelActive(); startPinch(); return; }
-  if(pointers.size>2) return;
+  // 핀치 확대는 '손가락 2개'일 때만. (펜 접점이 겹쳐도 필기가 취소되지 않음)
+  if(pointers.size>=2){
+    const allTouch=[...pointers.values()].every(pt=>pt.type==='touch');
+    if(allTouch){ cancelActive(); startPinch(); }
+    return;
+  }
 
   const p=toPage(l.x,l.y);
 
@@ -1000,7 +1006,7 @@ function pressure(e,pt,start){
 function onMove(e){
   if(!pointers.has(e.pointerId) && !active && !panning && !lasso && !selDrag && !textDrag && !textWResize && !textDragSel) return;
   const l=localXY(e);
-  if(pointers.has(e.pointerId)) pointers.set(e.pointerId,l);
+  if(pointers.has(e.pointerId)){ l.type=e.pointerType; pointers.set(e.pointerId,l); }
 
   if(pinch){ doPinch(); return; }
   if(textWResize){ doWidthResize(l); return; }
