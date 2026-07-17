@@ -922,7 +922,9 @@ function markDirty(){ if(nb){ nb.updated=Date.now(); save(); } refreshThumb(pi);
 /* ============================ 포인터 입력 ============================ */
 const pointers=new Map();
 let active=null;                 // 그리는 중 스트로크
-let panning=null, pinch=null;
+let activePid=null;              // 그리기(펜/마우스/손가락) 담당 포인터 id
+const nav=new Map();             // 이동/확대용 손가락들 (필기와 동시 사용)
+let navPan=null, navPinch=null;
 let eraseBatch=null;
 let lasso=null;                  // {pts:[...screen], }
 let selection=null;              // {strokes:[], moved:false, dx,dy}
@@ -939,26 +941,38 @@ board.addEventListener('pointerleave', e=>{ if(e.pointerType==='mouse') onUp(e);
 
 function localXY(e){ const r=board.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
 
+// 손가락(또는 pan 도구)은 '이동/확대' 담당인지 판정
+function wantsNav(e){
+  if(tool==='pan') return true;
+  if(e.pointerType==='touch') return penDown || penActiveRecently() || !fingerDraw;
+  return false;   // 펜/마우스(그리기 도구)는 그리기
+}
 function onDown(e){
-  const l=localXY(e);
-  // 팜 리젝션: 펜으로 필기하는 동안 들어오는 손/손바닥 터치는 완전히 무시
-  if(e.pointerType==='touch' && (penDown || penActiveRecently())) return;
-  // 펜으로 필기 중 또 다른 펜 접점(이벤트 겹침)이 들어오면 무시 → 연속필기가 끊기지 않도록
-  if(e.pointerType==='pen' && penDown && active) return;
-  if(e.pointerType==='pen'){ penDown=true; penSeen=true; }
-  l.type=e.pointerType; pointers.set(e.pointerId, l);
-  try{ board.setPointerCapture?.(e.pointerId); }catch(_){}
-
-  // 핀치 확대는 '손가락 2개'일 때만. (펜 접점이 겹쳐도 필기가 취소되지 않음)
-  if(pointers.size>=2){
-    const allTouch=[...pointers.values()].every(pt=>pt.type==='touch');
-    if(allTouch){ cancelActive(); startPinch(); }
+  const l=localXY(e); l.type=e.pointerType;
+  // 손바닥(큰 접촉)으로 판단되면 무시 — 필기 중 팜 마크/오작동 방지
+  if(e.pointerType==='touch' && Math.max(e.width||0,e.height||0) > 55) return;
+  if(e.pointerType==='pen'){
+    if(penDown && activePid!=null && e.pointerId!==activePid) return; // 겹친 펜 접점 무시(연속필기)
+    penDown=true; penSeen=true;
+  }
+  // 손가락으로 그리던 중 두 번째 손가락 → 그리기 취소하고 두 손가락 확대로 전환
+  if(e.pointerType==='touch' && activePid!=null && pointers.get(activePid)?.type==='touch'){
+    const fid=activePid, fpos=pointers.get(fid)||{x:l.x,y:l.y};
+    cancelActive(); activePid=null;
+    navDown(fid,fpos); pointers.set(e.pointerId,l); navDown(e.pointerId,l);
     return;
   }
+  pointers.set(e.pointerId,l);
+  try{ board.setPointerCapture?.(e.pointerId); }catch(_){}
 
+  if(wantsNav(e)){ navDown(e.pointerId,l); return; }   // 이동/확대 (필기와 동시 가능)
+  if(activePid!=null) return;                          // 이미 다른 포인터가 그리는 중
+  activePid=e.pointerId;
+  startTool(e,l);
+}
+function startTool(e,l){
   const p=toPage(l.x,l.y);
-
-  // 텍스트 선택 중이면: 좌우 핸들(상자 바깥)=너비 조절 / 내부=이동 / 바깥=선택 해제
+  // 텍스트 선택 중: 좌우 핸들=너비 조절 / 내부=이동 / 바깥=선택 해제
   if(textSel.length){
     const hs=textSideHandles();
     if(hs){ const bb=textBBox(textSel[0]); const rEdge=toScreen(bb.x2,0).x, lEdge=toScreen(bb.x,0).x;
@@ -967,28 +981,13 @@ function onDown(e){
     if(pointInTextUnion(p)){ textDragSel={lx:l.x,ly:l.y,moved:false,ox:textSel.map(t=>t.x),oy:textSel.map(t=>t.y)}; return; }
     clearTextSel();
   }
-
-  // 손가락 입력: '손가락 그리기'가 꺼져 있거나 pan 도구면 캔버스 이동, 아니면 그리기
-  const isTouch=e.pointerType==='touch';
-  if(tool==='pan' || (isTouch && !fingerDraw)){ panning={x:l.x,y:l.y}; return; }
-
   if(tool==='pen'||tool==='highlighter'){
-    active={id:uid(), tool, color:(tool==='highlighter'?color:color), size:(tool==='highlighter'?hlSize:penSize),
-            points:[{x:p.x,y:p.y,p:pressure(e,p,true)}]};
-    scheduleRender();
+    active={id:uid(), tool, color, size:(tool==='highlighter'?hlSize:penSize), points:[{x:p.x,y:p.y,p:pressure(e,p,true)}]}; scheduleRender();
   }else if(tool==='shape'){
-    active={id:uid(), tool:'shape', kind:shapeKind, color, size:shapeSize, points:[{x:p.x,y:p.y},{x:p.x,y:p.y}]};
-    scheduleRender();
-  }else if(tool==='eraser'){
-    eraseBatch=[]; eraseAt(p);
-  }else if(tool==='lasso'){
-    if(selection && pointInSel(p)){ selDrag={lx:l.x,ly:l.y,dx:0,dy:0}; }
-    else { clearSelection(); lasso={pts:[l], page:[p]}; }
-  }else if(tool==='text'){
-    const hit=hitText(p);
-    if(hit){ selectTexts([hit]); textDragSel={lx:l.x,ly:l.y,moved:false,ox:[hit.x],oy:[hit.y]}; }
-    else { clearTextSel(); openTextEditor(p.x,p.y,null); }
-  }
+    active={id:uid(), tool:'shape', kind:shapeKind, color, size:shapeSize, points:[{x:p.x,y:p.y},{x:p.x,y:p.y}]}; scheduleRender();
+  }else if(tool==='eraser'){ eraseBatch=[]; eraseAt(p); }
+  else if(tool==='lasso'){ if(selection && pointInSel(p)){ selDrag={lx:l.x,ly:l.y,dx:0,dy:0}; } else { clearSelection(); lasso={pts:[l],page:[p]}; } }
+  else if(tool==='text'){ const hit=hitText(p); if(hit){ selectTexts([hit]); textDragSel={lx:l.x,ly:l.y,moved:false,ox:[hit.x],oy:[hit.y]}; } else { clearTextSel(); openTextEditor(p.x,p.y,null); } }
 }
 let penSeen=false, penDown=false, _penUpT=0;
 function penActiveRecently(){ return (typeof performance!=='undefined') && (performance.now()-_penUpT < 500); } // 펜 뗀 직후 잔여 손터치 차단
@@ -1004,15 +1003,14 @@ function pressure(e,pt,start){
 }
 
 function onMove(e){
-  if(!pointers.has(e.pointerId) && !active && !panning && !lasso && !selDrag && !textDrag && !textWResize && !textDragSel) return;
   const l=localXY(e);
+  if(nav.has(e.pointerId)){ navMove(e.pointerId,l); return; }   // 이동/확대 손가락
+  if(e.pointerId!==activePid) return;                          // 그리는 포인터만 처리
   if(pointers.has(e.pointerId)){ l.type=e.pointerType; pointers.set(e.pointerId,l); }
 
-  if(pinch){ doPinch(); return; }
   if(textWResize){ doWidthResize(l); return; }
   if(textDragSel){ const dx=(l.x-textDragSel.lx)/view.s, dy=(l.y-textDragSel.ly)/view.s;
     textSel.forEach(t=>{t.x+=dx;t.y+=dy;}); textDragSel.lx=l.x; textDragSel.ly=l.y; textDragSel.moved=true; scheduleRender(); return; }
-  if(panning){ view.tx+=l.x-panning.x; view.ty+=l.y-panning.y; panning={x:l.x,y:l.y}; clampView(); scheduleRender(); return; }
 
   const p=toPage(l.x,l.y);
   if(active){
@@ -1045,8 +1043,9 @@ function onMove(e){
 function onUp(e){
   if(e.pointerType==='pen'){ penDown=false; _penUpT=(typeof performance!=='undefined'?performance.now():0); }
   pointers.delete(e.pointerId);
-  if(pinch && pointers.size<2){ pinch=null; }
-  if(pointers.size>=1 && (active||panning)){ /* 남은 손가락은 무시(들어야 재시작) */ }
+  if(nav.has(e.pointerId)){ navUp(e.pointerId); return; }   // 이동/확대 손가락 뗌
+  if(e.pointerId!==activePid) return;
+  activePid=null;
 
   if(active){
     if(active.tool==='shape'){
@@ -1056,7 +1055,6 @@ function onUp(e){
     active=null; scheduleRender(); return;
   }
   if(eraseBatch){ if(eraseBatch.length) pushUndo({t:'erase',strokes:eraseBatch}); eraseBatch=null; return; }
-  if(panning){ panning=null; return; }
   if(selDrag){ if(selection.dx||selection.dy) pushUndo({t:'move',strokes:selection.strokes.slice(),dx:selection.dx,dy:selection.dy}); selection.dx=selection.dy=0; selDrag=null; return; }
   if(textWResize){ const t=textWResize.t;
     if(t.w!==textWResize.beforeW || t.x!==textWResize.beforeX)
@@ -1072,14 +1070,7 @@ function onUp(e){
 }
 
 function cancelActive(){
-  if(active){ active=null; }
-  if(eraseBatch){ eraseBatch=null; }
-  if(lasso){ lasso=null; }
-  if(panning){ panning=null; }
-  if(selDrag){ selDrag=null; }
-  if(textDrag){ textDrag=null; }
-  if(textWResize){ textWResize=null; }
-  if(textDragSel){ textDragSel=null; }
+  active=null; eraseBatch=null; lasso=null; selDrag=null; textDrag=null; textWResize=null; textDragSel=null;
   scheduleRender();
 }
 
@@ -1093,21 +1084,33 @@ function eraseAt(p){
   if(removed.length){ eraseBatch.push(...removed); scheduleRender(); }
 }
 
-/* ---------- 핀치 확대/축소 ---------- */
-function startPinch(){
-  cancelActive();
-  const [a,b]=[...pointers.values()];
-  pinch={d:dist(a,b), cx:(a.x+b.x)/2, cy:(a.y+b.y)/2, s0:view.s, tx0:view.tx, ty0:view.ty};
-}
-function doPinch(){
-  const v=[...pointers.values()]; if(v.length<2)return;
-  const [a,b]=v; const d=dist(a,b), cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
-  let s=clamp(pinch.s0 * d/pinch.d, 0.15, 8);
-  // 초점 유지 + 두 손가락 이동에 따른 패닝
-  const wx=(pinch.cx-pinch.tx0)/pinch.s0, wy=(pinch.cy-pinch.ty0)/pinch.s0;
-  view.s=s; view.tx=cx-wx*s; view.ty=cy-wy*s; clampView(); updateZoom(); scheduleRender();
-}
+/* ---------- 이동/확대 (손가락, 필기와 동시 가능) ---------- */
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function navStartPinch(){ const v=[...nav.values()]; const [a,b]=v;
+  navPinch={d:dist(a,b)||1, cx:(a.x+b.x)/2, cy:(a.y+b.y)/2, s0:view.s, tx0:view.tx, ty0:view.ty}; }
+function navDown(id,l){
+  nav.set(id,{x:l.x,y:l.y});
+  if(nav.size===1){ navPan={id,x:l.x,y:l.y}; navPinch=null; }
+  else if(nav.size===2){ navPan=null; navStartPinch(); }
+}
+function navMove(id,l){
+  if(!nav.has(id))return; nav.set(id,{x:l.x,y:l.y});
+  if(nav.size>=2 && navPinch){
+    const v=[...nav.values()]; const [a,b]=v;
+    const d=dist(a,b), cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
+    const s=clamp(navPinch.s0*d/navPinch.d, 0.15, 8);
+    const wx=(navPinch.cx-navPinch.tx0)/navPinch.s0, wy=(navPinch.cy-navPinch.ty0)/navPinch.s0;
+    view.s=s; view.tx=cx-wx*s; view.ty=cy-wy*s; clampView(); updateZoom(); scheduleRender();
+  } else if(navPan && navPan.id===id){
+    view.tx+=l.x-navPan.x; view.ty+=l.y-navPan.y; navPan.x=l.x; navPan.y=l.y; clampView(); scheduleRender();
+  }
+}
+function navUp(id){
+  nav.delete(id);
+  if(nav.size===0){ navPan=null; navPinch=null; }
+  else if(nav.size===1){ const [rid]=[...nav.keys()]; const rp=nav.get(rid); navPan={id:rid,x:rp.x,y:rp.y}; navPinch=null; }
+  else { navStartPinch(); }
+}
 
 /* 데스크톱: 휠 확대/축소 + 트랙패드 패닝 */
 stage.addEventListener('wheel',e=>{
