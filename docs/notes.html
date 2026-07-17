@@ -3,7 +3,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="쌤노트">
 <meta name="theme-color" content="#111418">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
 <title>쌤노트 · SsamNote</title>
 <style>
   :root{
@@ -1068,5 +1074,10 @@ addEventListener('beforeunload',saveNow);
 
 /* ============================ 시작 ============================ */
 renderLibrary();
+
+/* ============================ 앱 설치(PWA) — 오프라인 실행 ============================ */
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
 </script>
 </body></html>
