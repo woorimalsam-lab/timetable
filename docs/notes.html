@@ -109,7 +109,7 @@
   .sizedot i{display:block;border-radius:50%;background:currentColor}
 
   /* 도구 옵션 팝오버 (도구 재탭 시) */
-  .toolpop{position:absolute;top:106px;z-index:44;background:var(--panel);border:1px solid var(--line);
+  .toolpop{position:absolute;top:150px;z-index:44;background:var(--panel);border:1px solid var(--line);
            border-radius:16px;box-shadow:var(--shadow);padding:14px;width:260px;max-width:92vw}
   .toolpop h4{margin:0 0 9px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase}
   .toolpop .palette{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:14px}
@@ -194,6 +194,11 @@
   #newpop .nnlb{text-align:center;line-height:1.25}
   #newpop .nnlb b{display:block;font-size:12.5px}
   #newpop .nnlb span{font-size:10.5px;color:var(--muted)}
+  #newpop .nnpaper{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+  #newpop .nnpchip{display:flex;align-items:center;gap:7px;padding:8px 12px;border:1.5px solid var(--line);
+          border-radius:11px;font-size:13px;font-weight:600;color:var(--ink)}
+  #newpop .nnpchip.on{border-color:var(--accent);color:var(--accent)}
+  #newpop .nnpchip .sw{width:18px;height:18px;border-radius:5px;border:1px solid rgba(0,0,0,.15)}
   #newpop .nncov{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
   #newpop .nncdot{width:34px;height:34px;border-radius:9px;cursor:pointer;border:2px solid transparent}
   #newpop .nncdot.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent)}
@@ -201,8 +206,53 @@
   #newpop .cvfoot button{padding:11px 22px;border-radius:12px;font-size:15px;font-weight:700;background:var(--panel2);color:var(--ink)}
   #newpop .cvfoot button.prim{background:var(--accent);color:#fff}
 
+  /* ===== GoodNotes 스타일 상단 크롬 ===== */
+  :root{--gn-blue:#48609f;--gn-blue-d:#3d5390;--gn-tabbg:#e7e5d6;}
+  html[data-theme="dark"]{--gn-blue:#3a4c85;--gn-blue-d:#31406f;--gn-tabbg:#20262e;}
+  .gntabs{display:flex;align-items:center;gap:3px;height:44px;padding:0 8px;background:var(--gn-blue-d)}
+  .gnhome{width:36px;height:36px;color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center;border-radius:9px;flex:0 0 auto}
+  .gnhome:hover{background:rgba(255,255,255,.15)}
+  .tabstrip{display:flex;align-items:flex-end;gap:3px;flex:1;overflow-x:auto;height:100%;scrollbar-width:none;padding-top:8px}
+  .tabstrip::-webkit-scrollbar{display:none}
+  .gtab{display:flex;align-items:center;gap:8px;padding:0 8px 0 14px;height:34px;border-radius:10px 10px 0 0;
+        background:rgba(255,255,255,.16);color:#eef1f9;font-size:13px;font-weight:600;white-space:nowrap;
+        max-width:190px;flex:0 0 auto;cursor:pointer}
+  .gtab.on{background:var(--panel);color:var(--ink)}
+  .gtab .tx{overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  .gtab .cl{width:19px;height:19px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;opacity:.65}
+  .gtab .cl:hover{background:rgba(0,0,0,.16);opacity:1}
+  .gntadd{width:32px;height:32px;color:#fff;font-size:19px;border-radius:9px;flex:0 0 auto}
+  .gntadd:hover{background:rgba(255,255,255,.15)}
+
+  .gnbar{display:flex;align-items:center;gap:3px;height:52px;padding:0 10px;background:var(--gn-blue);
+         overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  .gnbar::-webkit-scrollbar{display:none}
+  .gnbar .gnicon{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+         color:#fff;font-size:19px;flex:0 0 auto}
+  .gnbar .gnicon:hover{background:rgba(255,255,255,.15)}
+  .gnbar .rtool{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+         color:#fff;font-size:20px;flex:0 0 auto;position:relative}
+  .gnbar .rtool:hover{background:rgba(255,255,255,.15)}
+  .gnbar .rtool.on{background:#fff;color:var(--gn-blue)}
+  .gnbar .rtool.on::after{content:'';position:absolute;left:9px;right:9px;bottom:4px;height:3px;border-radius:2px;background:var(--tool-color,var(--gn-blue))}
+  .gnsep{width:1px;height:26px;background:rgba(255,255,255,.28);margin:0 5px;flex:0 0 auto}
+  .gngrow{flex:1;min-width:6px}
+
+  .gnsub{display:flex;align-items:center;gap:8px;height:46px;padding:0 12px;background:var(--panel2);
+         border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+  .gnsub::-webkit-scrollbar{display:none}
+  .undopill{display:flex;background:var(--panel);border-radius:12px;box-shadow:0 1px 5px rgba(0,0,0,.14);overflow:hidden;flex:0 0 auto}
+  .undopill button{width:42px;height:34px;color:var(--ink);font-size:17px;display:flex;align-items:center;justify-content:center}
+  .undopill button:hover{background:var(--panel2)}
+  .undopill button:disabled{opacity:.3}
+  .gnsep2{width:1px;height:22px;background:var(--line);flex:0 0 auto}
+  .zoomg2{display:flex;align-items:center;gap:2px;flex:0 0 auto}
+  .gnz{height:34px;min-width:34px;border-radius:9px;color:var(--ink);font-size:15px;display:flex;align-items:center;justify-content:center;padding:0 6px}
+  .gnz:hover{background:var(--panel)}
+  .gnz.zlabel{font-weight:700;font-size:13px;color:var(--muted);min-width:52px}
+
   /* 드롭다운 메뉴 */
-  .menu{position:absolute;top:52px;right:12px;z-index:40;background:var(--panel);border:1px solid var(--line);
+  .menu{position:absolute;top:100px;right:12px;z-index:40;background:var(--panel);border:1px solid var(--line);
         border-radius:14px;box-shadow:var(--shadow);padding:6px;min-width:210px}
   .menu button{display:flex;align-items:center;gap:11px;width:100%;padding:10px 12px;border-radius:9px;
                font-size:14px;font-weight:500;text-align:left}
@@ -249,22 +299,18 @@
 
 <!-- ===== 에디터 뷰 ===== -->
 <div id="editor" class="hidden">
-  <div class="topbar">
-    <button class="tbtn" id="backBtn" title="서재로">‹</button>
-    <input class="title-in" id="titleIn" placeholder="제목 없음">
-    <span class="pageind" id="pageInd">1 / 1</span>
-    <button class="tbtn" id="pagesBtn" title="페이지">▦</button>
-    <button class="tbtn" id="menuBtn" title="더보기">⋯</button>
+  <!-- 문서 탭 바 -->
+  <div class="gntabs">
+    <button class="gnhome" id="backBtn" title="서재">🏠</button>
+    <div class="tabstrip" id="tabstrip"></div>
+    <button class="gntadd" id="newTabBtn" title="새 노트">＋</button>
   </div>
 
-  <!-- GoodNotes 식 상단 도구 리본 -->
-  <div class="ribbon" id="ribbon">
-    <div class="rgroup">
-      <button class="rtool" id="undoBtn" title="실행 취소">↺</button>
-      <button class="rtool" id="redoBtn" title="다시 실행">↻</button>
-    </div>
-    <span class="rsep"></span>
-    <div class="rgroup" id="toolset">
+  <!-- 파란 도구 바 -->
+  <div class="gnbar">
+    <button class="gnicon" id="pagesBtn" title="페이지">▦</button>
+    <span class="gnsep"></span>
+    <div class="rgroup" id="toolset" style="display:flex">
       <button class="rtool on" data-tool="pen" title="펜 (1)">🖊️</button>
       <button class="rtool" data-tool="highlighter" title="형광펜 (2)">🖍️</button>
       <button class="rtool" data-tool="eraser" title="지우개 (3)">🩹</button>
@@ -273,14 +319,26 @@
       <button class="rtool" data-tool="text" title="텍스트 (6)">🅣</button>
       <button class="rtool" data-tool="pan" title="이동/확대 (7)">✋</button>
     </div>
-    <span class="rsep tool-only"></span>
+    <span class="gngrow"></span>
+    <button class="gnicon" id="addPageBtn2" title="페이지 추가">⊕</button>
+    <button class="gnicon" id="exportBtn" title="내보내기">⤴</button>
+    <button class="gnicon" id="menuBtn" title="더보기">⋯</button>
+  </div>
+
+  <!-- 보조 바: 실행취소 + 도구 옵션 + 줌 -->
+  <div class="gnsub">
+    <span class="undopill"><button id="undoBtn" title="실행 취소">↺</button><button id="redoBtn" title="다시 실행">↻</button></span>
+    <span class="gnsep2 tool-only"></span>
     <div class="colors" id="colors"></div>
-    <span class="rsep tool-only" id="sizeSep"></span>
+    <span class="gnsep2 tool-only" id="sizeSep"></span>
     <div class="sizes" id="sizes"></div>
-    <div class="rgroup zoomg">
-      <button class="rtool" id="zoomOut" title="축소">－</button>
-      <button class="rtool zlabel" id="zoomLabel" title="화면 맞춤">100%</button>
-      <button class="rtool" id="zoomIn" title="확대">＋</button>
+    <span class="gngrow"></span>
+    <span class="gnz zlabel" style="pointer-events:none" id="pageInd">1 / 1</span>
+    <span class="gnsep2"></span>
+    <div class="zoomg2">
+      <button class="gnz" id="zoomOut" title="축소">－</button>
+      <button class="gnz zlabel" id="zoomLabel" title="화면 맞춤">100%</button>
+      <button class="gnz" id="zoomIn" title="확대">＋</button>
     </div>
   </div>
 
@@ -338,13 +396,21 @@ function saveNow(){ clearTimeout(saveTimer); try{ localStorage.setItem(DB_KEY, J
 let _id = Date.now();
 const uid = ()=> (++_id).toString(36);
 
-function newPage(template){ return {id:uid(), template:template||'lined', strokes:[], texts:[]}; }
+function newPage(template,paper){ return {id:uid(), template:template||'lined', paper:paper||'cream', strokes:[], texts:[]}; }
 function newNotebook(opt){
   opt=opt||{};
-  const tpl=opt.template||'lined';
+  const tpl=opt.template||'lined', paper=opt.paper||'cream';
   const nb={id:uid(), title:opt.title||'새 노트', cover:opt.cover||COVERS[db.notebooks.length%COVERS.length],
-            template:tpl, created:Date.now(), updated:Date.now(), pages:[newPage(tpl)]};
+            template:tpl, paper, created:Date.now(), updated:Date.now(), pages:[newPage(tpl,paper)]};
   db.notebooks.unshift(nb); saveNow(); return nb;
+}
+const PAPERS={white:'흰색', cream:'크림', gray:'연회색'};
+function paperFill(pg){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  const p=pg&&pg.paper;
+  if(p==='cream') return dark?'#242017':'#f8f6e7';
+  if(p==='gray')  return dark?'#1c2027':'#eef1f4';
+  return cssVar('--paper');
 }
 
 /* ============================ 앱 상태 ============================ */
@@ -405,7 +471,7 @@ function bookMenu(n){
 
 /* ---------- 새 노트 만들기: 노트 유형 + 표지 선택 ---------- */
 function openNewNote(){
-  let selTpl='lined', selCov=COVERS[db.notebooks.length%COVERS.length];
+  let selTpl='lined', selCov=COVERS[db.notebooks.length%COVERS.length], selPaper='cream';
   const bd=el('div','backdrop'); bd.id='nnbd'; bd.style.zIndex=54; bd.onclick=close; document.body.appendChild(bd);
   const pop=el('div'); pop.id='newpop';
   pop.innerHTML=`
@@ -413,21 +479,29 @@ function openNewNote(){
     <input id="nnTitle" class="nninput" value="새 노트" maxlength="40">
     <div class="nnsec">노트 유형 <span>${TEMPLATES.length}종</span></div>
     <div class="nngrid" id="nnTpls"></div>
+    <div class="nnsec">종이 색</div>
+    <div class="nnpaper" id="nnPaper"></div>
     <div class="nnsec">표지 색상</div>
     <div class="nncov" id="nnCov"></div>
     <div class="cvfoot"><button id="nnCancel">취소</button><button id="nnMake" class="prim">만들기</button></div>`;
   document.body.appendChild(pop);
   function close(){ pop.remove(); bd.remove(); }
-  // 노트 유형 타일
   const tg=pop.querySelector('#nnTpls');
+  const drawTiles=()=>{ tg.querySelectorAll('.nntile canvas').forEach((cv,i)=>tplThumb(TEMPLATES[i],cv,selPaper)); };
   TEMPLATES.forEach(t=>{
     const tile=el('button','nntile'+(t===selTpl?' on':'')); tile.dataset.t=t;
-    const cv=el('canvas'); cv.width=112; cv.height=Math.round(112*PAGE_H/PAGE_W); tplThumb(t,cv);
+    const cv=el('canvas'); cv.width=112; cv.height=Math.round(112*PAGE_H/PAGE_W); tplThumb(t,cv,selPaper);
     tile.appendChild(cv);
     const lb=el('div','nnlb'); lb.innerHTML=`<b>${TEMPLATE_KO[t]}</b><span>${TEMPLATE_DESC[t]||''}</span>`; tile.appendChild(lb);
     tile.onclick=()=>{ selTpl=t; tg.querySelectorAll('.nntile').forEach(x=>x.classList.toggle('on',x===tile)); };
     tg.appendChild(tile);
   });
+  // 종이 색
+  const pg=pop.querySelector('#nnPaper');
+  Object.keys(PAPERS).forEach(k=>{ const b=el('button','nnpchip'+(k===selPaper?' on':''));
+    b.innerHTML=`<span class="sw" style="background:${k==='cream'?'#f8f6e7':k==='gray'?'#eef1f4':'#ffffff'}"></span>${PAPERS[k]}`;
+    b.onclick=()=>{ selPaper=k; pg.querySelectorAll('.nnpchip').forEach(x=>x.classList.remove('on')); b.classList.add('on'); drawTiles(); };
+    pg.appendChild(b); });
   // 표지 색
   const cg=pop.querySelector('#nnCov');
   COVERS.forEach(cv=>{ const s=el('div','nncdot'+(cv===selCov?' on':'')); s.style.background=cv;
@@ -436,24 +510,26 @@ function openNewNote(){
   pop.querySelector('#nnCancel').onclick=close;
   pop.querySelector('#nnMake').onclick=()=>{
     const title=(pop.querySelector('#nnTitle').value||'').trim()||'새 노트';
-    const n=newNotebook({title, template:selTpl, cover:selCov}); close(); open(n);
+    const n=newNotebook({title, template:selTpl, cover:selCov, paper:selPaper}); close(); open(n);
   };
 }
-function tplThumb(tpl, cv){
+function tplThumb(tpl, cv, paper){
   const c=cv.getContext('2d'), sc=cv.width/PAGE_W;
-  c.fillStyle= document.documentElement.getAttribute('data-theme')==='dark'?'#20262e':'#ffffff';
-  c.fillRect(0,0,cv.width,cv.height);
-  c.save(); c.scale(sc,sc); drawTemplate(c,tpl); c.restore();
+  c.fillStyle=paperFill({paper}); c.fillRect(0,0,cv.width,cv.height);
+  c.save(); c.scale(sc,sc); drawTemplate(c,tpl,paper); c.restore();
 }
 
-/* ============================ 노트 열기/닫기 ============================ */
+/* ============================ 노트 열기/닫기 + 문서 탭 ============================ */
+let openTabs = Array.isArray(db.openTabs)? db.openTabs.slice() : [];
 function open(n){
+  commitText();
   nb=n; pi=0; page=nb.pages[0];
+  if(!openTabs.includes(n.id)) openTabs.push(n.id);
+  db.openTabs=openTabs; save();
   $('#library').classList.add('hidden'); $('#libbar').classList.add('hidden');
   $('#editor').classList.remove('hidden');
-  $('#titleIn').value=nb.title;
   buildColorBar(); buildSizeBar(); setTool(tool);
-  fitPage(); refreshPageUI();
+  renderTabs(); fitPage(); refreshPageUI();
   scheduleRender();
 }
 function closeEditor(){
@@ -464,8 +540,29 @@ function closeEditor(){
   clearSelection(); $('#pages').classList.remove('open');
   renderLibrary();
 }
+function renderTabs(){
+  const strip=$('#tabstrip'); strip.innerHTML='';
+  openTabs=openTabs.filter(id=>db.notebooks.some(x=>x.id===id));   // 삭제된 노트 정리
+  openTabs.forEach(id=>{
+    const note=db.notebooks.find(x=>x.id===id); if(!note)return;
+    const tab=el('div','gtab'+(nb&&id===nb.id?' on':''));
+    tab.innerHTML=`<span class="tx">${esc(note.title)}</span><span class="cl" title="닫기">×</span>`;
+    tab.querySelector('.tx').onclick=()=>{ if(id!==nb.id){ const t=db.notebooks.find(x=>x.id===id); if(t)open(t); }
+      else { const nt=prompt('노트 제목',nb.title); if(nt!=null){nb.title=nt.trim()||'제목 없음'; markDirty(); renderTabs();} } };
+    tab.querySelector('.cl').onclick=e=>{ e.stopPropagation(); closeTab(id); };
+    strip.appendChild(tab);
+  });
+}
+function closeTab(id){
+  openTabs=openTabs.filter(x=>x!==id); db.openTabs=openTabs; save();
+  if(nb && id===nb.id){
+    if(openTabs.length){ const t=db.notebooks.find(x=>x.id===openTabs[openTabs.length-1]); if(t){open(t);return;} }
+    closeEditor(); return;
+  }
+  renderTabs();
+}
 $('#backBtn').onclick=closeEditor;
-$('#titleIn').oninput=e=>{ nb.title=e.target.value; nb.updated=Date.now(); save(); };
+$('#newTabBtn').onclick=openNewNote;
 
 /* ============================ 도구 UI ============================ */
 const COLOR_TOOLS=['pen','highlighter','shape'];
@@ -615,10 +712,10 @@ function render(){
   // 페이지 그림자 + 종이
   ctx.save();
   ctx.shadowColor='rgba(0,0,0,.28)'; ctx.shadowBlur=24; ctx.shadowOffsetY=8;
-  ctx.fillStyle=cssVar('--paper'); ctx.fillRect(0,0,PAGE_W,PAGE_H);
+  ctx.fillStyle=paperFill(page); ctx.fillRect(0,0,PAGE_W,PAGE_H);
   ctx.restore();
   ctx.beginPath(); ctx.rect(0,0,PAGE_W,PAGE_H); ctx.clip();
-  drawTemplate(ctx, page.template);
+  drawTemplate(ctx, page.template, page.paper);
   for(const st of page.strokes) drawStroke(ctx, st);
   if(active) drawStroke(ctx, active);
   for(const t of page.texts) drawTextObj(ctx, t);
@@ -629,16 +726,16 @@ function render(){
 }
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 
-function drawTemplate(c,tpl){
+function drawTemplate(c,tpl,paper){
   const dark=document.documentElement.getAttribute('data-theme')==='dark';
-  const g = dark? 'rgba(255,255,255,.10)':'rgba(60,80,120,.16)';
-  const g2= dark? 'rgba(255,255,255,.05)':'rgba(60,80,120,.08)';
+  let g,g2;
+  if(paper==='cream'){ g=dark?'rgba(220,205,150,.13)':'rgba(150,125,55,.28)'; g2=dark?'rgba(220,205,150,.08)':'rgba(150,125,55,.15)'; }
+  else { g = dark? 'rgba(255,255,255,.10)':'rgba(60,80,120,.16)'; g2= dark? 'rgba(255,255,255,.05)':'rgba(60,80,120,.08)'; }
   const step=44, m=64;
   c.save();
   if(tpl==='lined'){
     c.strokeStyle=g; c.lineWidth=1;
     for(let y=m;y<PAGE_H-20;y+=step){ c.beginPath();c.moveTo(40,y);c.lineTo(PAGE_W-40,y);c.stroke(); }
-    c.strokeStyle='rgba(255,59,48,.35)'; c.beginPath();c.moveTo(96,0);c.lineTo(96,PAGE_H);c.stroke();
   }else if(tpl==='narrow'){
     c.strokeStyle=g; c.lineWidth=1; const s2=30;
     for(let y=s2*2;y<PAGE_H-20;y+=s2){ c.beginPath();c.moveTo(40,y);c.lineTo(PAGE_W-40,y);c.stroke(); }
@@ -1145,7 +1242,17 @@ function closeTextEditor(){ if(tedit){ const t=tedit; tedit=null; teditText=null
 /* ============================ 페이지 패널 ============================ */
 $('#pagesBtn').onclick=()=>{ $('#pages').classList.toggle('open'); if($('#pages').classList.contains('open')) buildPageList(); };
 $('#pagesClose').onclick=()=>$('#pages').classList.remove('open');
-$('#addPageBtn').onclick=()=>{ const p=newPage(page.template); nb.pages.splice(pi+1,0,p); gotoPage(pi+1); buildPageList(); markDirty(); };
+function addPageAfter(){ const p=newPage(page.template, page.paper); nb.pages.splice(pi+1,0,p); gotoPage(pi+1); buildPageList(); markDirty(); }
+$('#addPageBtn').onclick=addPageAfter;
+$('#addPageBtn2').onclick=addPageAfter;
+$('#exportBtn').onclick=()=>{
+  if($('#menu')){ $('#menu').remove(); $('#backdrop')?.remove(); return; }
+  const bd=el('div','backdrop'); bd.id='backdrop'; bd.onclick=()=>{$('#menu')?.remove();bd.remove();}; document.body.appendChild(bd);
+  const m=el('div','menu'); m.id='menu';
+  m.innerHTML=`<button data-a="png"><span class="ic">🖼️</span> 이 페이지 PNG 저장</button><button data-a="pdf"><span class="ic">📄</span> 전체 PDF로 인쇄</button>`;
+  document.body.appendChild(m);
+  m.onclick=e=>{ const a=e.target.closest('button')?.dataset.a; m.remove();bd.remove(); if(a==='png')exportPNG(); else if(a==='pdf')exportPDF(); };
+};
 
 function refreshPageUI(){ $('#pageInd').textContent=`${pi+1} / ${nb.pages.length}`; updateUndoUI(); }
 function gotoPage(i){
@@ -1181,9 +1288,9 @@ function delPage(k){
 function renderThumb(pg, cv){
   const c=cv.getContext('2d'); const sc=cv.width/PAGE_W;
   c.setTransform(1,0,0,1,0,0); c.clearRect(0,0,cv.width,cv.height);
-  c.fillStyle=cssVar('--paper'); c.fillRect(0,0,cv.width,cv.height);
+  c.fillStyle=paperFill(pg); c.fillRect(0,0,cv.width,cv.height);
   c.save(); c.scale(sc,sc);
-  drawTemplate(c,pg.template);
+  drawTemplate(c,pg.template,pg.paper);
   pg.strokes.forEach(s=>drawStroke(c,s));
   pg.texts.forEach(t=>drawTextObj(c,t));
   c.restore();
@@ -1210,7 +1317,7 @@ $('#menuBtn').onclick=()=>{
   m.onclick=e=>{ const a=e.target.closest('button')?.dataset.a; if(!a)return;
     m.remove(); bd.remove();
     if(a==='tpl') openTemplatePicker();
-    else if(a==='rename'){ const t=prompt('노트 제목',nb.title); if(t!=null){nb.title=t.trim()||'제목 없음'; $('#titleIn').value=nb.title; markDirty();} }
+    else if(a==='rename'){ const t=prompt('노트 제목',nb.title); if(t!=null){nb.title=t.trim()||'제목 없음'; renderTabs(); markDirty();} }
     else if(a==='cover') openCoverPicker();
     else if(a==='finger'){ fingerDraw=!fingerDraw; db.fingerDraw=fingerDraw; save(); toast(fingerDraw?'손가락 그리기 켜짐':'펜 전용 모드 (손가락은 이동/확대)'); }
     else if(a==='png') exportPNG();
@@ -1230,9 +1337,17 @@ function openTemplatePicker(){
       row.appendChild(chip);
     });
     pop.appendChild(row);
+    // 종이 색
+    pop.insertAdjacentHTML('beforeend','<h4 style="margin:6px 0 8px">종이 색</h4>');
+    const prow=el('div','prow');
+    Object.keys(PAPERS).forEach(k=>{ const chip=el('button','chip'+((page.paper||'cream')===k?' on':''));
+      chip.innerHTML=`<span class="tpl" style="background:${k==='cream'?'#f8f6e7':k==='gray'?'#eef1f4':'#fff'}"></span>${PAPERS[k]}`;
+      chip.onclick=()=>{ page.paper=k; markDirty(); scheduleRender(); pop.remove(); $('#backdrop')?.remove(); };
+      prow.appendChild(chip); });
+    pop.appendChild(prow);
     const all=el('button','chip'); all.textContent='모든 페이지에 적용';
     all.style.width='100%'; all.style.justifyContent='center';
-    all.onclick=()=>{ nb.pages.forEach(p=>p.template=page.template); markDirty(); buildPageList(); pop.remove(); $('#backdrop')?.remove(); toast('전체 적용됨'); };
+    all.onclick=()=>{ nb.pages.forEach(p=>{p.template=page.template; p.paper=page.paper;}); markDirty(); buildPageList(); pop.remove(); $('#backdrop')?.remove(); toast('전체 적용됨'); };
     pop.appendChild(all);
   });
 }
@@ -1269,9 +1384,8 @@ function pageToCanvas(pg, scale){
   scale=scale||2;
   const cv=el('canvas'); cv.width=PAGE_W*scale; cv.height=PAGE_H*scale;
   const c=cv.getContext('2d'); c.scale(scale,scale);
-  c.fillStyle= document.documentElement.getAttribute('data-theme')==='dark'?'#20262e':'#ffffff';
-  c.fillRect(0,0,PAGE_W,PAGE_H);
-  drawTemplate(c,pg.template); pg.strokes.forEach(s=>drawStroke(c,s)); pg.texts.forEach(t=>drawTextObj(c,t));
+  c.fillStyle=paperFill(pg); c.fillRect(0,0,PAGE_W,PAGE_H);
+  drawTemplate(c,pg.template,pg.paper); pg.strokes.forEach(s=>drawStroke(c,s)); pg.texts.forEach(t=>drawTextObj(c,t));
   return cv;
 }
 function exportPNG(){
