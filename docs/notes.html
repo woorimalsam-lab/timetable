@@ -169,11 +169,37 @@
   #convpop .cvchip.on{border-color:var(--accent);color:var(--accent)}
   #convpop .cvspin,#convpop .cvmsg{color:var(--muted);font-size:14px;padding:16px 4px;width:100%;text-align:center}
   #convpop .cvmsg{line-height:1.5}
-  #convpop .cvedit input{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;
-           font-size:16px;background:var(--panel2);color:var(--ink)}
+  #convpop .cvedit textarea{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;
+           font-size:16px;background:var(--panel2);color:var(--ink);resize:none;font-family:inherit;line-height:1.35}
   #convpop .cvfoot{display:flex;gap:8px;justify-content:flex-end}
   #convpop .cvfoot button{padding:9px 18px;border-radius:11px;font-size:14px;font-weight:600;background:var(--panel2);color:var(--ink)}
   #convpop .cvfoot button.prim{background:var(--accent);color:#fff}
+
+  /* 새 노트 만들기 다이얼로그 */
+  #newpop{position:fixed;z-index:55;left:50%;top:50%;transform:translate(-50%,-50%);
+          width:min(560px,94vw);max-height:88vh;overflow:auto;background:var(--panel);border:1px solid var(--line);
+          border-radius:20px;box-shadow:var(--shadow);padding:20px}
+  #newpop .nnh{font-size:18px;font-weight:800;margin-bottom:14px}
+  #newpop .nninput{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;
+          font-weight:600;background:var(--panel2);color:var(--ink);margin-bottom:16px}
+  #newpop .nnsec{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;
+          margin:0 2px 10px;display:flex;align-items:center;gap:8px}
+  #newpop .nnsec span{background:var(--panel2);border-radius:8px;padding:1px 7px;font-size:11px}
+  #newpop .nngrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:12px;margin-bottom:18px}
+  #newpop .nntile{border:2px solid transparent;border-radius:12px;padding:6px;background:var(--panel2);
+          display:flex;flex-direction:column;align-items:center;gap:6px;transition:.12s}
+  #newpop .nntile:hover{background:var(--line)}
+  #newpop .nntile.on{border-color:var(--accent);background:var(--panel2)}
+  #newpop .nntile canvas{width:100%;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.14)}
+  #newpop .nnlb{text-align:center;line-height:1.25}
+  #newpop .nnlb b{display:block;font-size:12.5px}
+  #newpop .nnlb span{font-size:10.5px;color:var(--muted)}
+  #newpop .nncov{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+  #newpop .nncdot{width:34px;height:34px;border-radius:9px;cursor:pointer;border:2px solid transparent}
+  #newpop .nncdot.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent)}
+  #newpop .cvfoot{display:flex;gap:8px;justify-content:flex-end}
+  #newpop .cvfoot button{padding:11px 22px;border-radius:12px;font-size:15px;font-weight:700;background:var(--panel2);color:var(--ink)}
+  #newpop .cvfoot button.prim{background:var(--accent);color:#fff}
 
   /* 드롭다운 메뉴 */
   .menu{position:absolute;top:52px;right:12px;z-index:40;background:var(--panel);border:1px solid var(--line);
@@ -290,8 +316,9 @@ const COLORS = ['#1c2530','#5b6470','#ff3b30','#ff9500','#ffcc00','#34c759',
 const PEN_SIZES = [2.2,3.6,6,9];
 const HL_SIZES  = [16,26,38];
 const ER_SIZES  = [20,40,70];
-const TEMPLATES = ['blank','lined','grid','dots','cornell'];
-const TEMPLATE_KO = {blank:'무지',lined:'줄노트',grid:'모눈',dots:'점',cornell:'코넬'};
+const TEMPLATES = ['blank','lined','narrow','grid','dots','cornell','todo'];
+const TEMPLATE_KO = {blank:'무지',lined:'줄노트',narrow:'좁은 줄',grid:'모눈',dots:'점',cornell:'코넬',todo:'체크리스트'};
+const TEMPLATE_DESC = {blank:'자유롭게',lined:'필기 기본',narrow:'촘촘한 줄',grid:'그래프·표',dots:'도트 그리드',cornell:'코넬 노트',todo:'할 일 목록'};
 const COVERS = ['#0a84ff','#5e5ce6','#34c759','#ff9500','#ff3b30','#ff2d95','#20262e','#8b5a2b'];
 
 /* ============================ 저장소 ============================ */
@@ -312,9 +339,11 @@ let _id = Date.now();
 const uid = ()=> (++_id).toString(36);
 
 function newPage(template){ return {id:uid(), template:template||'lined', strokes:[], texts:[]}; }
-function newNotebook(){
-  const nb={id:uid(), title:'새 노트', cover:COVERS[db.notebooks.length%COVERS.length],
-            template:'lined', created:Date.now(), updated:Date.now(), pages:[newPage('lined')]};
+function newNotebook(opt){
+  opt=opt||{};
+  const tpl=opt.template||'lined';
+  const nb={id:uid(), title:opt.title||'새 노트', cover:opt.cover||COVERS[db.notebooks.length%COVERS.length],
+            template:tpl, created:Date.now(), updated:Date.now(), pages:[newPage(tpl)]};
   db.notebooks.unshift(nb); saveNow(); return nb;
 }
 
@@ -322,6 +351,7 @@ function newNotebook(){
 let nb=null, pi=0, page=null;           // 현재 노트/페이지 인덱스/페이지
 let tool='pen', color=COLORS[0], penSize=PEN_SIZES[1], hlSize=HL_SIZES[1], erSize=ER_SIZES[1];
 let shapeKind='line', shapeSize=PEN_SIZES[1];
+let fingerDraw = db.fingerDraw!==false;   // 손가락으로 그리기 (기본 켜짐). 끄면 손가락은 이동/확대 전용
 const SHAPE_KO={line:'직선',rect:'사각형',ellipse:'원',arrow:'화살표'};
 const view={s:1, tx:0, ty:0};           // 화면 변환 (scale, translate)
 let needsRender=true;
@@ -345,7 +375,7 @@ function renderLibrary(){
 
   const addCard=el('div','card');
   addCard.innerHTML=`<div class="cover new"><div class="plus">＋</div><div>새 노트</div></div><div class="cap">노트 만들기</div>`;
-  addCard.onclick=()=>{ const n=newNotebook(); open(n); };
+  addCard.onclick=openNewNote;
   grid.appendChild(addCard);
 
   for(const n of db.notebooks){
@@ -371,6 +401,49 @@ function bookMenu(n){
   const what=prompt(`"${n.title}"\n\n1: 이름 변경\n2: 삭제\n\n번호 입력`,'1');
   if(what==='1'){ const t=prompt('노트 제목',n.title); if(t!=null){ n.title=t.trim()||'제목 없음'; n.updated=Date.now(); saveNow(); renderLibrary(); } }
   else if(what==='2'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){ db.notebooks=db.notebooks.filter(x=>x.id!==n.id); saveNow(); renderLibrary(); } }
+}
+
+/* ---------- 새 노트 만들기: 노트 유형 + 표지 선택 ---------- */
+function openNewNote(){
+  let selTpl='lined', selCov=COVERS[db.notebooks.length%COVERS.length];
+  const bd=el('div','backdrop'); bd.id='nnbd'; bd.style.zIndex=54; bd.onclick=close; document.body.appendChild(bd);
+  const pop=el('div'); pop.id='newpop';
+  pop.innerHTML=`
+    <div class="nnh"><b>새 노트 만들기</b></div>
+    <input id="nnTitle" class="nninput" value="새 노트" maxlength="40">
+    <div class="nnsec">노트 유형 <span>${TEMPLATES.length}종</span></div>
+    <div class="nngrid" id="nnTpls"></div>
+    <div class="nnsec">표지 색상</div>
+    <div class="nncov" id="nnCov"></div>
+    <div class="cvfoot"><button id="nnCancel">취소</button><button id="nnMake" class="prim">만들기</button></div>`;
+  document.body.appendChild(pop);
+  function close(){ pop.remove(); bd.remove(); }
+  // 노트 유형 타일
+  const tg=pop.querySelector('#nnTpls');
+  TEMPLATES.forEach(t=>{
+    const tile=el('button','nntile'+(t===selTpl?' on':'')); tile.dataset.t=t;
+    const cv=el('canvas'); cv.width=112; cv.height=Math.round(112*PAGE_H/PAGE_W); tplThumb(t,cv);
+    tile.appendChild(cv);
+    const lb=el('div','nnlb'); lb.innerHTML=`<b>${TEMPLATE_KO[t]}</b><span>${TEMPLATE_DESC[t]||''}</span>`; tile.appendChild(lb);
+    tile.onclick=()=>{ selTpl=t; tg.querySelectorAll('.nntile').forEach(x=>x.classList.toggle('on',x===tile)); };
+    tg.appendChild(tile);
+  });
+  // 표지 색
+  const cg=pop.querySelector('#nnCov');
+  COVERS.forEach(cv=>{ const s=el('div','nncdot'+(cv===selCov?' on':'')); s.style.background=cv;
+    s.onclick=()=>{ selCov=cv; cg.querySelectorAll('.nncdot').forEach(x=>x.classList.toggle('on',x===s)); };
+    cg.appendChild(s); });
+  pop.querySelector('#nnCancel').onclick=close;
+  pop.querySelector('#nnMake').onclick=()=>{
+    const title=(pop.querySelector('#nnTitle').value||'').trim()||'새 노트';
+    const n=newNotebook({title, template:selTpl, cover:selCov}); close(); open(n);
+  };
+}
+function tplThumb(tpl, cv){
+  const c=cv.getContext('2d'), sc=cv.width/PAGE_W;
+  c.fillStyle= document.documentElement.getAttribute('data-theme')==='dark'?'#20262e':'#ffffff';
+  c.fillRect(0,0,cv.width,cv.height);
+  c.save(); c.scale(sc,sc); drawTemplate(c,tpl); c.restore();
 }
 
 /* ============================ 노트 열기/닫기 ============================ */
@@ -566,6 +639,15 @@ function drawTemplate(c,tpl){
     c.strokeStyle=g; c.lineWidth=1;
     for(let y=m;y<PAGE_H-20;y+=step){ c.beginPath();c.moveTo(40,y);c.lineTo(PAGE_W-40,y);c.stroke(); }
     c.strokeStyle='rgba(255,59,48,.35)'; c.beginPath();c.moveTo(96,0);c.lineTo(96,PAGE_H);c.stroke();
+  }else if(tpl==='narrow'){
+    c.strokeStyle=g; c.lineWidth=1; const s2=30;
+    for(let y=s2*2;y<PAGE_H-20;y+=s2){ c.beginPath();c.moveTo(40,y);c.lineTo(PAGE_W-40,y);c.stroke(); }
+  }else if(tpl==='todo'){
+    c.lineWidth=1; const s3=64;
+    for(let y=m;y<PAGE_H-20;y+=s3){
+      c.strokeStyle=g; c.strokeRect(56,y-22,26,26);           // 체크박스
+      c.beginPath();c.moveTo(104,y);c.lineTo(PAGE_W-40,y);c.stroke();
+    }
   }else if(tpl==='grid'){
     c.strokeStyle=g2; c.lineWidth=1;
     for(let x=0;x<PAGE_W;x+=step){c.beginPath();c.moveTo(x,0);c.lineTo(x,PAGE_H);c.stroke();}
@@ -710,18 +792,20 @@ function localXY(e){ const r=board.getBoundingClientRect(); return {x:e.clientX-
 
 function onDown(e){
   const l=localXY(e);
+  // 팜 리젝션: 펜으로 필기하는 동안 들어오는 손/손바닥 터치는 완전히 무시
+  if(e.pointerType==='touch' && (penDown || penActiveRecently())) return;
+  if(e.pointerType==='pen'){ penDown=true; penSeen=true; }
   pointers.set(e.pointerId, l);
-  board.setPointerCapture?.(e.pointerId);
+  try{ board.setPointerCapture?.(e.pointerId); }catch(_){}
 
   if(pointers.size===2){ cancelActive(); startPinch(); return; }
   if(pointers.size>2) return;
 
-  // 손가락으로 그리기 방지(펜 감지 시): 터치는 도구가 pan이 아니어도 캔버스 이동
+  // 손가락 입력: '손가락 그리기'가 꺼져 있거나 pan 도구면 캔버스 이동, 아니면 그리기
   const isTouch=e.pointerType==='touch';
-  if(tool==='pan' || (isTouch && penSeen)){ panning={x:l.x,y:l.y}; return; }
+  if(tool==='pan' || (isTouch && !fingerDraw)){ panning={x:l.x,y:l.y}; return; }
 
   const p=toPage(l.x,l.y);
-  if(e.pointerType==='pen') penSeen=true;
 
   if(tool==='pen'||tool==='highlighter'){
     active={id:uid(), tool, color:(tool==='highlighter'?color:color), size:(tool==='highlighter'?hlSize:penSize),
@@ -741,7 +825,8 @@ function onDown(e){
     else openTextEditor(p.x,p.y,null);
   }
 }
-let penSeen=false;
+let penSeen=false, penDown=false, _penUpT=0;
+function penActiveRecently(){ return (typeof performance!=='undefined') && (performance.now()-_penUpT < 500); } // 펜 뗀 직후 잔여 손터치 차단
 /* 필압: 스타일러스는 실제 압력, 손가락/마우스는 '속도'로 굵기 흉내(느릴수록 굵게) */
 let _pLastT=0,_pLastPt=null,_pEma=0;
 function pressure(e,pt,start){
@@ -790,6 +875,7 @@ function onMove(e){
 }
 
 function onUp(e){
+  if(e.pointerType==='pen'){ penDown=false; _penUpT=(typeof performance!=='undefined'?performance.now():0); }
   pointers.delete(e.pointerId);
   if(pinch && pointers.size<2){ pinch=null; }
   if(pointers.size>=1 && (active||panning)){ /* 남은 손가락은 무시(들어야 재시작) */ }
@@ -918,24 +1004,46 @@ function positionSelbar(){
 
 /* ============================ 손글씨 → 텍스트 인식 ============================ */
 // Google Input Tools 필기 인식(무료·키 불필요, 인식 시 인터넷 필요). 한국어/영어 지원.
-async function recognizeInk(strokes, lang){
-  if(window.__mockRecognize) return window.__mockRecognize(strokes,lang);   // 테스트용 훅
-  // 선택 영역을 원점 기준으로 정규화
+// 선택 영역을 '줄'로 분리해 각 줄을 인식 → 여러 줄 텍스트로 합침.
+function segmentLines(strokes){
+  const items=strokes.map(s=>{const bb=strokeBBox(s);return{s,cy:(bb.y+bb.y2)/2,y:bb.y,y2:bb.y2,x:bb.x,h:bb.y2-bb.y};});
+  if(!items.length) return [];
+  const avgH=items.reduce((a,b)=>a+b.h,0)/items.length;
+  const thr=Math.max(24, avgH*0.75);
+  items.sort((a,b)=>a.cy-b.cy);
+  const lines=[]; let cur=[], lineMax=-1e9;
+  for(const it of items){
+    if(cur.length && it.cy-lineMax>thr){ lines.push(cur); cur=[]; }
+    cur.push(it); lineMax=Math.max(lineMax, it.cy);
+  }
+  if(cur.length) lines.push(cur);
+  // 각 줄은 좌→우 정렬
+  return lines.map(ln=>ln.sort((a,b)=>a.x-b.x).map(o=>o.s));
+}
+async function recognizeGroup(strokes, lang){
+  if(window.__mockRecognize) return await window.__mockRecognize(strokes,lang);
   let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
   strokes.forEach(st=>pointsOf(st).forEach(p=>{minx=Math.min(minx,p.x);miny=Math.min(miny,p.y);maxx=Math.max(maxx,p.x);maxy=Math.max(maxy,p.y);}));
   const w=Math.max(1,maxx-minx), h=Math.max(1,maxy-miny);
-  const ink=strokes.map(st=>{const pts=pointsOf(st); const xs=[],ys=[],ts=[];
+  const ink=strokes.map(st=>{const pts=pointsOf(st);const xs=[],ys=[],ts=[];
     pts.forEach((p,i)=>{xs.push(Math.round(p.x-minx));ys.push(Math.round(p.y-miny));ts.push(i*8);}); return [xs,ys,ts];});
   const body={options:"enable_pre_space",requests:[{writing_guide:{writing_area_width:Math.round(w),writing_area_height:Math.round(h)},ink,language:lang}]};
   const ctrl=new AbortController(); const timer=setTimeout(()=>ctrl.abort(),9000);
   try{
-    // 헤더를 지정하지 않아 text/plain 단순요청 → CORS 프리플라이트 없이 전송(크로스오리진 성공률↑)
     const res=await fetch(`https://inputtools.google.com/request?itc=${lang}-t-i0-handwrit&app=ssamnote`,
       {method:'POST',body:JSON.stringify(body),signal:ctrl.signal});
     const data=await res.json();
     if(data[0]==='SUCCESS' && data[1] && data[1][0]) return data[1][0][1]||[];
     return [];
   } finally { clearTimeout(timer); }
+}
+// 반환: {text:'여러 줄', cands:[첫 줄 후보들], lines:n}
+async function recognizeInk(strokes, lang){
+  const lines=segmentLines(strokes);
+  if(lines.length<=1){ const c=await recognizeGroup(strokes,lang); return {text:(c[0]||''), cands:c, lines:1}; }
+  const outs=[]; let first=[];
+  for(const ln of lines){ const c=await recognizeGroup(ln,lang); outs.push(c[0]||''); if(!first.length)first=c; }
+  return {text:outs.join('\n'), cands:first, lines:lines.length};
 }
 let convLang='ko';
 function openConvert(){
@@ -948,25 +1056,29 @@ function openConvert(){
     <div class="cvh"><b>손글씨 → 텍스트</b>
       <span class="cvlang"><button data-l="ko" class="on">한글</button><button data-l="en">영문</button></span></div>
     <div class="cvbody" id="cvbody"><div class="cvspin">인식 중…</div></div>
-    <div class="cvedit"><input id="cvinput" placeholder="여기서 직접 고치거나 입력"></div>
+    <div class="cvedit"><textarea id="cvinput" rows="2" placeholder="여기서 직접 고치거나 입력 (여러 줄 가능)"></textarea></div>
     <div class="cvfoot"><button id="cvcancel">취소</button><button id="cvok" class="prim">삽입</button></div>`;
   document.body.appendChild(pop);
   function close(){ pop.remove(); bd.remove(); }
+  const input=pop.querySelector('#cvinput');
+  const grow=()=>{ input.style.height='auto'; input.style.height=Math.min(160,input.scrollHeight)+'px'; };
+  input.addEventListener('input',grow);
   pop.querySelector('#cvcancel').onclick=close;
   pop.querySelectorAll('.cvlang button').forEach(b=>b.onclick=()=>{ convLang=b.dataset.l;
     pop.querySelectorAll('.cvlang button').forEach(x=>x.classList.toggle('on',x===b)); run(); });
-  pop.querySelector('#cvok').onclick=()=>{ const val=pop.querySelector('#cvinput').value.trim(); if(val){ insertText(val,strokes,bb); } close(); };
+  pop.querySelector('#cvok').onclick=()=>{ const val=input.value.replace(/\s+$/,''); if(val.trim()){ insertText(val,strokes,bb); } close(); };
   async function run(){
     const box=pop.querySelector('#cvbody'); box.innerHTML='<div class="cvspin">인식 중…</div>';
     try{
-      const cands=await recognizeInk(strokes, convLang);
-      if(!cands.length){ box.innerHTML='<div class="cvmsg">인식 결과가 없어요. 아래에 직접 입력할 수 있어요.</div>'; return; }
-      pop.querySelector('#cvinput').value=cands[0];
+      const {text,cands,lines}=await recognizeInk(strokes, convLang);
+      if(!text && !cands.length){ box.innerHTML='<div class="cvmsg">인식 결과가 없어요. 아래에 직접 입력할 수 있어요.</div>'; return; }
+      input.value=text||cands[0]||''; grow();
       box.innerHTML='';
+      if(lines>1){ box.innerHTML=`<div class="cvmsg" style="padding:8px 4px">📄 ${lines}줄로 인식했어요. 아래에서 확인·수정 후 삽입하세요.</div>`; return; }
       cands.slice(0,8).forEach(t=>{ const c=el('button','cvchip'); c.textContent=t;
-        c.onclick=()=>{ pop.querySelector('#cvinput').value=t; box.querySelectorAll('.cvchip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); };
+        c.onclick=()=>{ input.value=t; grow(); box.querySelectorAll('.cvchip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); };
         box.appendChild(c); });
-      box.firstChild&&box.firstChild.classList.add('on');
+      box.firstChild&&box.firstChild.classList&&box.firstChild.classList.add('on');
     }catch(err){
       box.innerHTML='<div class="cvmsg">⚠️ 인식 서버에 연결하지 못했어요(인터넷 필요). 아래에 직접 입력해 삽입할 수 있어요.</div>';
     }
@@ -975,7 +1087,8 @@ function openConvert(){
 }
 function insertText(str, strokes, bb){
   const col=commonColor(strokes);
-  const size=clamp((bb.y2-bb.y)*0.82, 20, 90);
+  const nlines=str.split('\n').length;
+  const size=clamp((bb.y2-bb.y)/nlines*0.78, 18, 90);   // 여러 줄이면 줄 높이에 맞춰 글자 크기 계산
   const t={id:uid(), x:bb.x, y:bb.y, text:str, color:col, size:Math.round(size)};
   page.strokes=page.strokes.filter(s=>!strokes.includes(s));
   page.texts.push(t);
@@ -1087,6 +1200,8 @@ $('#menuBtn').onclick=()=>{
     <button data-a="rename"><span class="ic">✏️</span> 노트 이름 변경</button>
     <button data-a="cover"><span class="ic">🎨</span> 표지 색상</button>
     <div class="div"></div>
+    <button data-a="finger"><span class="ic">${fingerDraw?'✍️':'🖐️'}</span> 손가락으로 그리기 <span style="margin-left:auto;color:var(--muted);font-size:12px">${fingerDraw?'켜짐':'꺼짐(펜 전용)'}</span></button>
+    <div class="div"></div>
     <button data-a="png"><span class="ic">🖼️</span> 이 페이지 PNG 저장</button>
     <button data-a="pdf"><span class="ic">📄</span> 전체 PDF로 인쇄</button>
     <div class="div"></div>
@@ -1097,6 +1212,7 @@ $('#menuBtn').onclick=()=>{
     if(a==='tpl') openTemplatePicker();
     else if(a==='rename'){ const t=prompt('노트 제목',nb.title); if(t!=null){nb.title=t.trim()||'제목 없음'; $('#titleIn').value=nb.title; markDirty();} }
     else if(a==='cover') openCoverPicker();
+    else if(a==='finger'){ fingerDraw=!fingerDraw; db.fingerDraw=fingerDraw; save(); toast(fingerDraw?'손가락 그리기 켜짐':'펜 전용 모드 (손가락은 이동/확대)'); }
     else if(a==='png') exportPNG();
     else if(a==='pdf') exportPDF();
     else if(a==='clear'){ if(confirm('이 페이지의 필기를 모두 지울까요?')){ const s=page.strokes.slice(),tx=page.texts.slice();
@@ -1124,6 +1240,8 @@ function miniTpl(box,t){
   const c=el('canvas'); c.width=34;c.height=24; const g=c.getContext('2d');
   g.fillStyle='#fff'; g.fillRect(0,0,34,24); g.strokeStyle='#9db'; g.strokeStyle='rgba(60,80,120,.4)'; g.lineWidth=.6;
   if(t==='lined'){for(let y=6;y<24;y+=6){g.beginPath();g.moveTo(3,y);g.lineTo(31,y);g.stroke();}}
+  else if(t==='narrow'){for(let y=4;y<24;y+=4){g.beginPath();g.moveTo(3,y);g.lineTo(31,y);g.stroke();}}
+  else if(t==='todo'){for(let y=6;y<24;y+=7){g.strokeRect(4,y-3,4,4);g.beginPath();g.moveTo(11,y-1);g.lineTo(31,y-1);g.stroke();}}
   else if(t==='grid'){for(let x=4;x<34;x+=6){g.beginPath();g.moveTo(x,0);g.lineTo(x,24);g.stroke();}for(let y=4;y<24;y+=6){g.beginPath();g.moveTo(0,y);g.lineTo(34,y);g.stroke();}}
   else if(t==='dots'){g.fillStyle='rgba(60,80,120,.5)';for(let x=5;x<34;x+=6)for(let y=5;y<24;y+=6){g.beginPath();g.arc(x,y,.9,0,7);g.fill();}}
   else if(t==='cornell'){g.beginPath();g.moveTo(11,2);g.lineTo(11,19);g.stroke();g.beginPath();g.moveTo(3,19);g.lineTo(31,19);g.stroke();}
