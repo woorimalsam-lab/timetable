@@ -156,6 +156,25 @@
   #pages .addp{margin:12px;padding:12px;border:2px dashed var(--line);border-radius:10px;color:var(--muted);
                font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px}
 
+  /* 손글씨 변환 팝업 */
+  #convpop{position:fixed;z-index:55;left:50%;top:50%;transform:translate(-50%,-50%);
+           width:min(420px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:18px;
+           box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;gap:12px}
+  #convpop .cvh{display:flex;align-items:center;justify-content:space-between;font-size:16px}
+  #convpop .cvlang{display:flex;gap:4px;background:var(--panel2);padding:3px;border-radius:9px}
+  #convpop .cvlang button{padding:5px 12px;border-radius:7px;font-size:13px;font-weight:600;color:var(--muted)}
+  #convpop .cvlang button.on{background:var(--accent);color:#fff}
+  #convpop .cvbody{min-height:70px;max-height:180px;overflow:auto;display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start}
+  #convpop .cvchip{padding:9px 13px;border:1.5px solid var(--line);border-radius:11px;font-size:16px;background:var(--panel2)}
+  #convpop .cvchip.on{border-color:var(--accent);color:var(--accent)}
+  #convpop .cvspin,#convpop .cvmsg{color:var(--muted);font-size:14px;padding:16px 4px;width:100%;text-align:center}
+  #convpop .cvmsg{line-height:1.5}
+  #convpop .cvedit input{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;
+           font-size:16px;background:var(--panel2);color:var(--ink)}
+  #convpop .cvfoot{display:flex;gap:8px;justify-content:flex-end}
+  #convpop .cvfoot button{padding:9px 18px;border-radius:11px;font-size:14px;font-weight:600;background:var(--panel2);color:var(--ink)}
+  #convpop .cvfoot button.prim{background:var(--accent);color:#fff}
+
   /* 드롭다운 메뉴 */
   .menu{position:absolute;top:52px;right:12px;z-index:40;background:var(--panel);border:1px solid var(--line);
         border-radius:14px;box-shadow:var(--shadow);padding:6px;min-width:210px}
@@ -576,17 +595,37 @@ function drawStroke(c, st){
     for(let i=1;i<pts.length;i++){const m=mid(pts[i-1],pts[i]); c.quadraticCurveTo(pts[i-1].x,pts[i-1].y,m.x,m.y);}
     c.lineTo(pts[pts.length-1].x,pts[pts.length-1].y); c.stroke(); c.restore(); return;
   }
-  // 펜 — 필압에 따라 굵기 변화
-  c.strokeStyle=st.color; c.globalAlpha=1;
-  if(pts.length===1){ c.fillStyle=st.color; c.beginPath(); c.arc(pts[0].x,pts[0].y,st.size/2,0,7); c.fill(); return; }
-  for(let i=1;i<pts.length;i++){
-    const p0=pts[i-1], p1=pts[i];
-    const pr=((p0.p||.5)+(p1.p||.5))/2;
-    c.lineWidth=st.size*(0.55+0.55*pr);
-    c.beginPath(); c.moveTo(p0.x,p0.y);
-    const m=mid(p0,p1); c.quadraticCurveTo(p0.x,p0.y,m.x,m.y); c.lineTo(p1.x,p1.y);
-    c.stroke();
+  // 펜 — 필압/속도에 따라 굵기가 변하는 가변폭 채움(부드러운 잉크 느낌)
+  c.fillStyle=st.color; c.globalAlpha=1;
+  const path=(st===active)?buildInkPath(pts,st.size):inkPathOf(st);
+  c.fill(path);
+}
+const penPath=new WeakMap();
+function inkPathOf(st){ let p=penPath.get(st); if(!p){ p=buildInkPath(st.points,st.size); penPath.set(st,p);} return p; }
+function invalidateInk(st){ penPath.delete(st); }
+/* 스트로크 외곽선(좌/우 오프셋 + 둥근 끝)을 만들어 채우면 매끄러운 가변폭 획이 됨 */
+function buildInkPath(pts, size){
+  const path=new Path2D(), n=pts.length;
+  const rad=i=>Math.max(0.5, size/2*(0.42+0.58*clamp(pts[i].p==null?0.5:pts[i].p,0,1)));
+  if(n===1){ path.arc(pts[0].x,pts[0].y,rad(0),0,7); return path; }
+  const L=[],R=[];
+  for(let i=0;i<n;i++){
+    const p=pts[i], a=pts[i-1]||p, b=pts[i+1]||p;
+    let dx=b.x-a.x, dy=b.y-a.y; const l=Math.hypot(dx,dy)||1; dx/=l; dy/=l;
+    const nx=-dy, ny=dx, r=rad(i);
+    L.push({x:p.x+nx*r,y:p.y+ny*r}); R.push({x:p.x-nx*r,y:p.y-ny*r});
   }
+  const out=[];
+  for(let i=0;i<n;i++) out.push(L[i]);
+  { const a=pts[n-1], b=pts[n-2]||pts[n-1]; const t=Math.atan2(a.y-b.y,a.x-b.x), r=rad(n-1);
+    for(let i=0;i<=8;i++){ const ang=t+Math.PI/2 - Math.PI*i/8; out.push({x:a.x+Math.cos(ang)*r,y:a.y+Math.sin(ang)*r}); } }
+  for(let i=n-1;i>=0;i--) out.push(R[i]);
+  { const a=pts[0], b=pts[1]||pts[0]; const t=Math.atan2(b.y-a.y,b.x-a.x), r=rad(0);
+    for(let i=0;i<=8;i++){ const ang=(t-Math.PI/2) - Math.PI*i/8; out.push({x:a.x+Math.cos(ang)*r,y:a.y+Math.sin(ang)*r}); } }
+  path.moveTo(out[0].x,out[0].y);
+  for(let i=1;i<out.length;i++) path.lineTo(out[i].x,out[i].y);
+  path.closePath();
+  return path;
 }
 function drawTextObj(c,t){
   c.save(); c.fillStyle=t.color; c.textBaseline='top';
@@ -636,7 +675,8 @@ function applyOp(op, dir){ // dir:  'undo' | 'redo'
   switch(op.t){
     case 'add':      if(undo) page.strokes=page.strokes.filter(s=>s!==op.stroke); else page.strokes.push(op.stroke); break;
     case 'erase':    if(undo) page.strokes.push(...op.strokes); else page.strokes=page.strokes.filter(s=>!op.strokes.includes(s)); break;
-    case 'move':     { const dx=undo?-op.dx:op.dx, dy=undo?-op.dy:op.dy; op.strokes.forEach(s=>s.points.forEach(p=>{p.x+=dx;p.y+=dy;})); break; }
+    case 'move':     { const dx=undo?-op.dx:op.dx, dy=undo?-op.dy:op.dy; op.strokes.forEach(s=>{s.points.forEach(p=>{p.x+=dx;p.y+=dy;}); invalidateInk(s);}); break; }
+    case 'convert':  if(undo){ page.strokes.push(...op.strokes); page.texts=page.texts.filter(x=>x!==op.text); } else { page.strokes=page.strokes.filter(s=>!op.strokes.includes(s)); page.texts.push(op.text); } break;
     case 'textadd':  if(undo) page.texts=page.texts.filter(x=>x!==op.text); else page.texts.push(op.text); break;
     case 'textdel':  if(undo) page.texts.push(op.text); else page.texts=page.texts.filter(x=>x!==op.text); break;
     case 'textedit': op.text.text = undo?op.before:op.after; if(op.text.text==='') { /* keep */ } break;
@@ -685,7 +725,7 @@ function onDown(e){
 
   if(tool==='pen'||tool==='highlighter'){
     active={id:uid(), tool, color:(tool==='highlighter'?color:color), size:(tool==='highlighter'?hlSize:penSize),
-            points:[{x:p.x,y:p.y,p:pressure(e)}]};
+            points:[{x:p.x,y:p.y,p:pressure(e,p,true)}]};
     scheduleRender();
   }else if(tool==='shape'){
     active={id:uid(), tool:'shape', kind:shapeKind, color, size:shapeSize, points:[{x:p.x,y:p.y},{x:p.x,y:p.y}]};
@@ -702,7 +742,16 @@ function onDown(e){
   }
 }
 let penSeen=false;
-function pressure(e){ return e.pressure&&e.pressure>0 && e.pointerType==='pen' ? e.pressure : .5; }
+/* 필압: 스타일러스는 실제 압력, 손가락/마우스는 '속도'로 굵기 흉내(느릴수록 굵게) */
+let _pLastT=0,_pLastPt=null,_pEma=0;
+function pressure(e,pt,start){
+  if(e.pointerType==='pen' && e.pressure>0) return clamp(e.pressure,0.06,1);
+  const now=(typeof performance!=='undefined'?performance.now():0);
+  if(start||!_pLastPt){ _pLastT=now; _pLastPt=pt; _pEma=0; return 0.72; }
+  const dt=Math.max(1, now-_pLastT), d=Math.hypot(pt.x-_pLastPt.x, pt.y-_pLastPt.y);
+  _pEma=_pEma*0.7 + (d/dt)*0.3; _pLastT=now; _pLastPt=pt;
+  return clamp(1 - _pEma/2.3, 0.34, 1);
+}
 
 function onMove(e){
   if(!pointers.has(e.pointerId) && !active && !panning && !lasso && !selDrag && !textDrag) return;
@@ -723,14 +772,17 @@ function onMove(e){
       active.points[1]={x:bx,y:by}; scheduleRender(); return;
     }
     const last=active.points[active.points.length-1];
-    if(Math.hypot(p.x-last.x,p.y-last.y) > (active.tool==='highlighter'?1.2:0.6)){
-      active.points.push({x:p.x,y:p.y,p:pressure(e)}); scheduleRender();
+    if(Math.hypot(p.x-last.x,p.y-last.y) > (active.tool==='highlighter'?1.2:0.5)){
+      // 입력 스무딩: 원점 방향으로 살짝 당겨 지터 감소(펜은 약하게, 손가락은 강하게)
+      const k=(e.pointerType==='pen')?0.78:0.6;
+      const sx=last.x+(p.x-last.x)*k, sy=last.y+(p.y-last.y)*k;
+      active.points.push({x:sx,y:sy,p:pressure(e,{x:sx,y:sy})}); scheduleRender();
     }
     return;
   }
   if(eraseBatch){ eraseAt(p); return; }
   if(selDrag){ const dx=(l.x-selDrag.lx)/view.s, dy=(l.y-selDrag.ly)/view.s;
-    selection.strokes.forEach(s=>s.points.forEach(pt=>{pt.x+=dx;pt.y+=dy;}));
+    selection.strokes.forEach(s=>{ s.points.forEach(pt=>{pt.x+=dx;pt.y+=dy;}); invalidateInk(s); });
     selection.dx+=dx; selection.dy+=dy; selDrag.lx=l.x; selDrag.ly=l.y; scheduleRender(); return; }
   if(textDrag){ const dx=(l.x-textDrag.lx)/view.s, dy=(l.y-textDrag.ly)/view.s;
     textDrag.t.x+=dx; textDrag.t.y+=dy; textDrag.lx=l.x; textDrag.ly=l.y; textDrag.moved=true; scheduleRender(); return; }
@@ -849,19 +901,89 @@ function positionSelbar(){
   let bar=$('#selbar');
   if(!selection){ bar?.remove(); return; }
   if(!bar){ bar=el('div'); bar.id='selbar';
-    bar.innerHTML=`<button data-a="del" class="danger">🗑 삭제</button><button data-a="dup">⧉ 복제</button><button data-a="done">✓ 완료</button>`;
+    bar.innerHTML=`<button data-a="ocr">✎→T 텍스트 변환</button><button data-a="dup">⧉ 복제</button><button data-a="del" class="danger">🗑 삭제</button><button data-a="done">✓ 완료</button>`;
     stage.appendChild(bar);
     bar.onclick=e=>{ const a=e.target.closest('button')?.dataset.a; if(!a)return;
       if(a==='del'){ const arr=selection.strokes.slice(); page.strokes=page.strokes.filter(s=>!arr.includes(s)); pushUndo({t:'erase',strokes:arr}); clearSelection(); }
       else if(a==='dup'){ const copies=selection.strokes.map(s=>({id:uid(),tool:s.tool,kind:s.kind,color:s.color,size:s.size,points:s.points.map(p=>({x:p.x+24,y:p.y+24,p:p.p}))}));
         copies.forEach(cp=>{page.strokes.push(cp); pushUndo({t:'add',stroke:cp});}); selection={strokes:copies,dx:0,dy:0}; scheduleRender(); }
+      else if(a==='ocr'){ openConvert(); }
       else if(a==='done'){ clearSelection(); }
     };
   }
   const bb=selBBox(); const s=toScreen(bb.x-10,bb.y-10);
-  bar.style.left=clamp(s.x,8,stage.clientWidth-190)+'px';
+  bar.style.left=clamp(s.x,8,stage.clientWidth-260)+'px';
   bar.style.top=Math.max(8, s.y-46)+'px';
 }
+
+/* ============================ 손글씨 → 텍스트 인식 ============================ */
+// Google Input Tools 필기 인식(무료·키 불필요, 인식 시 인터넷 필요). 한국어/영어 지원.
+async function recognizeInk(strokes, lang){
+  if(window.__mockRecognize) return window.__mockRecognize(strokes,lang);   // 테스트용 훅
+  // 선택 영역을 원점 기준으로 정규화
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  strokes.forEach(st=>pointsOf(st).forEach(p=>{minx=Math.min(minx,p.x);miny=Math.min(miny,p.y);maxx=Math.max(maxx,p.x);maxy=Math.max(maxy,p.y);}));
+  const w=Math.max(1,maxx-minx), h=Math.max(1,maxy-miny);
+  const ink=strokes.map(st=>{const pts=pointsOf(st); const xs=[],ys=[],ts=[];
+    pts.forEach((p,i)=>{xs.push(Math.round(p.x-minx));ys.push(Math.round(p.y-miny));ts.push(i*8);}); return [xs,ys,ts];});
+  const body={options:"enable_pre_space",requests:[{writing_guide:{writing_area_width:Math.round(w),writing_area_height:Math.round(h)},ink,language:lang}]};
+  const ctrl=new AbortController(); const timer=setTimeout(()=>ctrl.abort(),9000);
+  try{
+    // 헤더를 지정하지 않아 text/plain 단순요청 → CORS 프리플라이트 없이 전송(크로스오리진 성공률↑)
+    const res=await fetch(`https://inputtools.google.com/request?itc=${lang}-t-i0-handwrit&app=ssamnote`,
+      {method:'POST',body:JSON.stringify(body),signal:ctrl.signal});
+    const data=await res.json();
+    if(data[0]==='SUCCESS' && data[1] && data[1][0]) return data[1][0][1]||[];
+    return [];
+  } finally { clearTimeout(timer); }
+}
+let convLang='ko';
+function openConvert(){
+  if(!selection || !selection.strokes.length) return;
+  const strokes=selection.strokes.slice(), bb=selBBox();
+  $('#convpop')?.remove(); $('#convbd')?.remove();
+  const bd=el('div','backdrop'); bd.id='convbd'; bd.style.zIndex=54; bd.onclick=close; document.body.appendChild(bd);
+  const pop=el('div'); pop.id='convpop';
+  pop.innerHTML=`
+    <div class="cvh"><b>손글씨 → 텍스트</b>
+      <span class="cvlang"><button data-l="ko" class="on">한글</button><button data-l="en">영문</button></span></div>
+    <div class="cvbody" id="cvbody"><div class="cvspin">인식 중…</div></div>
+    <div class="cvedit"><input id="cvinput" placeholder="여기서 직접 고치거나 입력"></div>
+    <div class="cvfoot"><button id="cvcancel">취소</button><button id="cvok" class="prim">삽입</button></div>`;
+  document.body.appendChild(pop);
+  function close(){ pop.remove(); bd.remove(); }
+  pop.querySelector('#cvcancel').onclick=close;
+  pop.querySelectorAll('.cvlang button').forEach(b=>b.onclick=()=>{ convLang=b.dataset.l;
+    pop.querySelectorAll('.cvlang button').forEach(x=>x.classList.toggle('on',x===b)); run(); });
+  pop.querySelector('#cvok').onclick=()=>{ const val=pop.querySelector('#cvinput').value.trim(); if(val){ insertText(val,strokes,bb); } close(); };
+  async function run(){
+    const box=pop.querySelector('#cvbody'); box.innerHTML='<div class="cvspin">인식 중…</div>';
+    try{
+      const cands=await recognizeInk(strokes, convLang);
+      if(!cands.length){ box.innerHTML='<div class="cvmsg">인식 결과가 없어요. 아래에 직접 입력할 수 있어요.</div>'; return; }
+      pop.querySelector('#cvinput').value=cands[0];
+      box.innerHTML='';
+      cands.slice(0,8).forEach(t=>{ const c=el('button','cvchip'); c.textContent=t;
+        c.onclick=()=>{ pop.querySelector('#cvinput').value=t; box.querySelectorAll('.cvchip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); };
+        box.appendChild(c); });
+      box.firstChild&&box.firstChild.classList.add('on');
+    }catch(err){
+      box.innerHTML='<div class="cvmsg">⚠️ 인식 서버에 연결하지 못했어요(인터넷 필요). 아래에 직접 입력해 삽입할 수 있어요.</div>';
+    }
+  }
+  run();
+}
+function insertText(str, strokes, bb){
+  const col=commonColor(strokes);
+  const size=clamp((bb.y2-bb.y)*0.82, 20, 90);
+  const t={id:uid(), x:bb.x, y:bb.y, text:str, color:col, size:Math.round(size)};
+  page.strokes=page.strokes.filter(s=>!strokes.includes(s));
+  page.texts.push(t);
+  pushUndo({t:'convert',strokes:strokes.slice(),text:t});
+  clearSelection(); scheduleRender();
+}
+function commonColor(strokes){ const m={}; strokes.forEach(s=>{m[s.color]=(m[s.color]||0)+1;});
+  return Object.keys(m).sort((a,b)=>m[b]-m[a])[0]||COLORS[0]; }
 
 /* ============================ 텍스트 ============================ */
 let tedit=null, teditText=null, teditPos=null;
