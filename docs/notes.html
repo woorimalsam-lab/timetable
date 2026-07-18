@@ -947,26 +947,37 @@ function wantsNav(e){
   if(e.pointerType==='touch') return penDown || penActiveRecently() || !fingerDraw;
   return false;   // 펜/마우스(그리기 도구)는 그리기
 }
+// 진행 중이던 획을 즉시 마무리(커밋)하고 그리기 상태 해제 — 빠른 연속 필기에서 획 유실 방지
+function preemptActive(){
+  if(active){
+    if(active.tool==='shape'){ const A=active.points[0],B=active.points[1];
+      if(A&&B&&Math.hypot(B.x-A.x,B.y-A.y)>6){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); } }
+    else if(active.points.length){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); }
+  } else if(eraseBatch && eraseBatch.length){ pushUndo({t:'erase',strokes:eraseBatch}); }
+  active=null; eraseBatch=null; lasso=null; selDrag=null; textDrag=null; textWResize=null; textDragSel=null;
+  activePid=null; scheduleRender();
+}
 function onDown(e){
   const l=localXY(e); l.type=e.pointerType;
   // 펜으로 필기 중일 때만, 아주 큰 접촉(손바닥)만 무시 — 일반 손가락(확대/이동/필기)은 절대 막지 않음
   if(e.pointerType==='touch' && penDown && Math.max(e.width||0,e.height||0) > 90) return;
-  if(e.pointerType==='pen'){
-    if(penDown && activePid!=null && e.pointerId!==activePid) return; // 겹친 펜 접점 무시(연속필기)
-    penDown=true; penSeen=true;
-  }
-  // 손가락으로 그리던 중 두 번째 손가락 → 그리기 취소하고 두 손가락 확대로 전환
+
+  // 손가락으로 그리던 중 '또 다른' 손가락이 닿으면 두 손가락 확대로 전환
   if(e.pointerType==='touch' && activePid!=null && pointers.get(activePid)?.type==='touch'){
     const fid=activePid, fpos=pointers.get(fid)||{x:l.x,y:l.y};
     cancelActive(); activePid=null;
     navDown(fid,fpos); pointers.set(e.pointerId,l); navDown(e.pointerId,l);
     return;
   }
+  if(e.pointerType==='pen'){ penDown=true; penSeen=true; }
+
   pointers.set(e.pointerId,l);
   try{ board.setPointerCapture?.(e.pointerId); }catch(_){}
 
   if(wantsNav(e)){ navDown(e.pointerId,l); return; }   // 이동/확대 (필기와 동시 가능)
-  if(activePid!=null) return;                          // 이미 다른 포인터가 그리는 중
+
+  // 새 그리기 접점: 이전 획이 아직 살아있으면(뗌 이벤트 유실·빠른 필기) 즉시 마무리하고 새 획 시작
+  if(activePid!=null && activePid!==e.pointerId) preemptActive();
   activePid=e.pointerId;
   startTool(e,l);
 }
