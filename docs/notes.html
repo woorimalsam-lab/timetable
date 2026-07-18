@@ -402,11 +402,13 @@ function load(){
   return {notebooks:[], theme:null};
 }
 let saveTimer=null;
+function _writeDB(){ try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){ toast('저장 공간이 부족합니다'); } }
+// 저장은 유휴 시간에 비동기로 → 필기 중/다음 획 시작 시 메인 스레드를 막지 않음(입력 지연 방지)
 function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(()=>{
-  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
-  catch(e){ toast('저장 공간이 부족합니다'); }
-},400); }
-function saveNow(){ clearTimeout(saveTimer); try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){} }
+  if(window.requestIdleCallback) requestIdleCallback(()=>_writeDB(), {timeout:3000});
+  else setTimeout(_writeDB,0);
+},900); }
+function saveNow(){ clearTimeout(saveTimer); _writeDB(); }
 
 let _id = Date.now();
 const uid = ()=> (++_id).toString(36);
@@ -917,7 +919,7 @@ function undo(){ ensureHist(); const op=page._undo.pop(); if(!op)return; applyOp
 function redo(){ ensureHist(); const op=page._redo.pop(); if(!op)return; applyOp(op,'redo'); page._undo.push(op); updateUndoUI(); markDirty(); scheduleRender(); }
 function updateUndoUI(){ ensureHist(); $('#undoBtn').disabled=!page._undo.length; $('#redoBtn').disabled=!page._redo.length; }
 $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo;
-function markDirty(){ if(nb){ nb.updated=Date.now(); save(); } refreshThumb(pi); }
+function markDirty(){ if(nb){ nb.updated=Date.now(); save(); } if($('#pages').classList.contains('open')) refreshThumb(pi); }
 
 /* ============================ 포인터 입력 ============================ */
 const pointers=new Map();
