@@ -432,7 +432,7 @@ function paperFill(pg){
 let nb=null, pi=0, page=null;           // 현재 노트/페이지 인덱스/페이지
 let tool='pen', color=COLORS[0], penSize=PEN_SIZES[1], hlSize=HL_SIZES[1], erSize=ER_SIZES[1];
 let shapeKind='line', shapeSize=PEN_SIZES[1];
-let fingerDraw = db.fingerDraw!==false;   // 손가락으로 그리기 (기본 켜짐). 끄면 손가락은 이동/확대 전용
+let fingerDraw = db.fingerDraw===true;   // 손가락으로 그리기 (기본 꺼짐=이동/확대 전용). 펜=필기, 손가락=이동
 const SHAPE_KO={line:'직선',rect:'사각형',ellipse:'원',arrow:'화살표'};
 const view={s:1, tx:0, ty:0};           // 화면 변환 (scale, translate)
 let needsRender=true;
@@ -959,7 +959,9 @@ function preemptActive(){
 }
 function onDown(e){
   const l=localXY(e); l.type=e.pointerType;
-  // 펜으로 필기 중일 때만, 아주 큰 접촉(손바닥)만 무시 — 일반 손가락(확대/이동/필기)은 절대 막지 않음
+  // 펜으로 획을 그리는 동안 들어오는 손/손바닥 터치는 완전히 무시 → 화면이 밀려 획이 끊기지 않도록
+  if(e.pointerType==='touch' && active && pointers.get(activePid)?.type==='pen') return;
+  // 펜 필기 중 아주 큰 접촉(손바닥)도 무시
   if(e.pointerType==='touch' && penDown && Math.max(e.width||0,e.height||0) > 90) return;
 
   // 손가락으로 그리던 중 '또 다른' 손가락이 닿으면 두 손가락 확대로 전환
@@ -1012,6 +1014,17 @@ function pressure(e,pt,start){
   _pEma=_pEma*0.7 + (d/dt)*0.3; _pLastT=now; _pLastPt=pt;
   return clamp(1 - _pEma/2.3, 0.34, 1);
 }
+// 그리는 중 한 점 추가(임계값 + 스무딩). coalesced 이벤트마다 호출
+function addActivePoint(ev){
+  if(!active) return;
+  const q=localXY(ev), pp=toPage(q.x,q.y);
+  const last=active.points[active.points.length-1]; if(!last) return;
+  const thr=(active.tool==='highlighter'?1.2:0.45);
+  if(Math.hypot(pp.x-last.x, pp.y-last.y) <= thr) return;
+  const k=(ev.pointerType==='pen')?0.82:0.62;
+  const sx=last.x+(pp.x-last.x)*k, sy=last.y+(pp.y-last.y)*k;
+  active.points.push({x:sx, y:sy, p:pressure(ev,{x:sx,y:sy})});
+}
 
 function onMove(e){
   const l=localXY(e);
@@ -1033,13 +1046,10 @@ function onMove(e){
       }
       active.points[1]={x:bx,y:by}; scheduleRender(); return;
     }
-    const last=active.points[active.points.length-1];
-    if(Math.hypot(p.x-last.x,p.y-last.y) > (active.tool==='highlighter'?1.2:0.5)){
-      // 입력 스무딩: 원점 방향으로 살짝 당겨 지터 감소(펜은 약하게, 손가락은 강하게)
-      const k=(e.pointerType==='pen')?0.78:0.6;
-      const sx=last.x+(p.x-last.x)*k, sy=last.y+(p.y-last.y)*k;
-      active.points.push({x:sx,y:sy,p:pressure(e,{x:sx,y:sy})}); scheduleRender();
-    }
+    // 빠른 획의 중간 좌표(coalesced)까지 모두 반영 → 끊김/각짐 없이 매끄럽게
+    const evs=(e.getCoalescedEvents && e.getCoalescedEvents().length)?e.getCoalescedEvents():[e];
+    for(const ev of evs) addActivePoint(ev);
+    scheduleRender();
     return;
   }
   if(eraseBatch){ eraseAt(p); return; }
