@@ -709,7 +709,8 @@ function clampView(){
 }
 
 /* ============================ 렌더링 ============================ */
-function scheduleRender(){ needsRender=true; }
+// keepStatic=true 면 확정 레이어(캐시)를 재사용(그리는 중엔 전체 재렌더 안 함 → 지연 없음)
+function scheduleRender(keepStatic){ if(!keepStatic) staticValid=false; needsRender=true; }
 function loop(){ if(needsRender){ needsRender=false; render(); } requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
 
@@ -717,27 +718,50 @@ function fitCanvas(){
   const dpr=window.devicePixelRatio||1, W=stage.clientWidth, H=stage.clientHeight;
   if(board.width!==Math.round(W*dpr)||board.height!==Math.round(H*dpr)){
     board.width=Math.round(W*dpr); board.height=Math.round(H*dpr);
-    board.style.width=W+'px'; board.style.height=H+'px';
+    board.style.width=W+'px'; board.style.height=H+'px'; staticValid=false;
   }
   return dpr;
+}
+/* ---------- 확정 레이어(오프스크린 캐시) ---------- */
+let staticCanvas=null, staticCtx=null, staticValid=false;
+function ensureStatic(){
+  if(!staticCanvas){ staticCanvas=document.createElement('canvas'); staticCtx=staticCanvas.getContext('2d'); }
+  if(staticCanvas.width!==board.width || staticCanvas.height!==board.height){
+    staticCanvas.width=board.width; staticCanvas.height=board.height; staticValid=false;
+  }
+}
+function drawCommitted(dpr,W,H){   // 종이+템플릿+확정 획+텍스트를 캐시에 그림
+  const c=staticCtx;
+  c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,W,H);
+  c.save(); c.translate(view.tx,view.ty); c.scale(view.s,view.s);
+  c.save(); c.shadowColor='rgba(0,0,0,.28)'; c.shadowBlur=24; c.shadowOffsetY=8;
+  c.fillStyle=paperFill(page); c.fillRect(0,0,PAGE_W,PAGE_H); c.restore();
+  c.beginPath(); c.rect(0,0,PAGE_W,PAGE_H); c.clip();
+  drawTemplate(c, page.template, page.paper);
+  for(const st of page.strokes) drawStroke(c, st);
+  for(const t of page.texts){ if(tedit && t===teditText) continue; drawTextObj(c, t); }
+  c.restore();
+}
+function appendToStatic(st){   // 확정된 획 하나를 캐시에 덧그림(O(1) — 전체 재렌더 불필요)
+  if(!staticValid || !staticCtx) return false;
+  const dpr=window.devicePixelRatio||1;
+  const c=staticCtx; c.save();
+  c.setTransform(dpr,0,0,dpr,0,0); c.translate(view.tx,view.ty); c.scale(view.s,view.s);
+  c.beginPath(); c.rect(0,0,PAGE_W,PAGE_H); c.clip();
+  drawStroke(c, st); c.restore(); return true;
 }
 function render(){
   if(!page) return;
   const dpr=fitCanvas(), W=stage.clientWidth, H=stage.clientHeight;
+  ensureStatic();
+  if(!staticValid){ drawCommitted(dpr,W,H); staticValid=true; }
+  // 캐시를 화면에 붙이고, 그 위에 '현재 그리는 획 + 선택 오버레이'만 그림
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,board.width,board.height);
+  ctx.drawImage(staticCanvas,0,0);
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,W,H);
-  ctx.save();
-  ctx.translate(view.tx,view.ty); ctx.scale(view.s,view.s);
-  // 페이지 그림자 + 종이
-  ctx.save();
-  ctx.shadowColor='rgba(0,0,0,.28)'; ctx.shadowBlur=24; ctx.shadowOffsetY=8;
-  ctx.fillStyle=paperFill(page); ctx.fillRect(0,0,PAGE_W,PAGE_H);
-  ctx.restore();
+  ctx.save(); ctx.translate(view.tx,view.ty); ctx.scale(view.s,view.s);
   ctx.beginPath(); ctx.rect(0,0,PAGE_W,PAGE_H); ctx.clip();
-  drawTemplate(ctx, page.template, page.paper);
-  for(const st of page.strokes) drawStroke(ctx, st);
   if(active) drawStroke(ctx, active);
-  for(const t of page.texts){ if(tedit && t===teditText) continue; drawTextObj(ctx, t); }
   drawSelectionOutline(ctx);
   drawTextSelection(ctx);
   ctx.restore();
@@ -997,9 +1021,9 @@ function startTool(e,l){
     clearTextSel();
   }
   if(tool==='pen'||tool==='highlighter'){
-    active={id:uid(), tool, color, size:(tool==='highlighter'?hlSize:penSize), points:[{x:p.x,y:p.y,p:pressure(e,p,true)}]}; scheduleRender();
+    active={id:uid(), tool, color, size:(tool==='highlighter'?hlSize:penSize), points:[{x:p.x,y:p.y,p:pressure(e,p,true)}]}; scheduleRender(true);
   }else if(tool==='shape'){
-    active={id:uid(), tool:'shape', kind:shapeKind, color, size:shapeSize, points:[{x:p.x,y:p.y},{x:p.x,y:p.y}]}; scheduleRender();
+    active={id:uid(), tool:'shape', kind:shapeKind, color, size:shapeSize, points:[{x:p.x,y:p.y},{x:p.x,y:p.y}]}; scheduleRender(true);
   }else if(tool==='eraser'){ eraseBatch=[]; eraseAt(p); }
   else if(tool==='lasso'){ if(selection && pointInSel(p)){ selDrag={lx:l.x,ly:l.y,dx:0,dy:0}; } else { clearSelection(); lasso={pts:[l],page:[p]}; } }
   else if(tool==='text'){ const hit=hitText(p); if(hit){ selectTexts([hit]); textDragSel={lx:l.x,ly:l.y,moved:false,ox:[hit.x],oy:[hit.y]}; } else { clearTextSel(); openTextEditor(p.x,p.y,null); } }
@@ -1046,12 +1070,12 @@ function onMove(e){
         const a=active.points[0], s=Math.max(Math.abs(p.x-a.x),Math.abs(p.y-a.y));
         bx=a.x+Math.sign(p.x-a.x||1)*s; by=a.y+Math.sign(p.y-a.y||1)*s;
       }
-      active.points[1]={x:bx,y:by}; scheduleRender(); return;
+      active.points[1]={x:bx,y:by}; scheduleRender(true); return;   // 그리는 중엔 캐시 재사용
     }
     // 빠른 획의 중간 좌표(coalesced)까지 모두 반영 → 끊김/각짐 없이 매끄럽게
     const evs=(e.getCoalescedEvents && e.getCoalescedEvents().length)?e.getCoalescedEvents():[e];
     for(const ev of evs) addActivePoint(ev);
-    scheduleRender();
+    scheduleRender(true);   // 그리는 중엔 캐시 재사용(전체 재렌더 X)
     return;
   }
   if(eraseBatch){ eraseAt(p); return; }
@@ -1071,11 +1095,14 @@ function onUp(e){
   activePid=null;
 
   if(active){
+    let committed=null;
     if(active.tool==='shape'){
       const A=active.points[0], B=active.points[1];
-      if(Math.hypot(B.x-A.x,B.y-A.y) > 6){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); }
-    } else if(active.points.length){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); }
-    active=null; scheduleRender(); return;
+      if(Math.hypot(B.x-A.x,B.y-A.y) > 6){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); committed=active; }
+    } else if(active.points.length){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); committed=active; }
+    active=null;
+    if(committed){ if(!appendToStatic(committed)) staticValid=false; }   // 캐시에 덧그림(전체 재렌더 X)
+    scheduleRender(true); return;
   }
   if(eraseBatch){ if(eraseBatch.length) pushUndo({t:'erase',strokes:eraseBatch}); eraseBatch=null; return; }
   if(selDrag){ if(selection.dx||selection.dy) pushUndo({t:'move',strokes:selection.strokes.slice(),dx:selection.dx,dy:selection.dy}); selection.dx=selection.dy=0; selDrag=null; return; }
