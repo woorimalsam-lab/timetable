@@ -76,7 +76,7 @@
   /* ---------- 에디터 ---------- */
   #editor{position:absolute;inset:0;display:flex;flex-direction:column}
   #stage{flex:1;position:relative;overflow:hidden;background:var(--pagebg);touch-action:none}
-  #board{position:absolute;inset:0;display:block}
+  #board{position:absolute;inset:0;display:block;touch-action:none;-ms-touch-action:none}
   .empty-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
               pointer-events:none;color:#fff;opacity:.0}
 
@@ -949,8 +949,8 @@ function wantsNav(e){
 }
 function onDown(e){
   const l=localXY(e); l.type=e.pointerType;
-  // 손바닥(큰 접촉)으로 판단되면 무시 — 필기 중 팜 마크/오작동 방지
-  if(e.pointerType==='touch' && Math.max(e.width||0,e.height||0) > 55) return;
+  // 펜으로 필기 중일 때만, 아주 큰 접촉(손바닥)만 무시 — 일반 손가락(확대/이동/필기)은 절대 막지 않음
+  if(e.pointerType==='touch' && penDown && Math.max(e.width||0,e.height||0) > 90) return;
   if(e.pointerType==='pen'){
     if(penDown && activePid!=null && e.pointerId!==activePid) return; // 겹친 펜 접점 무시(연속필기)
     penDown=true; penSeen=true;
