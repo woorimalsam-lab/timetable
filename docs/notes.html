@@ -944,7 +944,7 @@ function localXY(e){ const r=board.getBoundingClientRect(); return {x:e.clientX-
 // 손가락(또는 pan 도구)은 '이동/확대' 담당인지 판정
 function wantsNav(e){
   if(tool==='pan') return true;
-  if(e.pointerType==='touch') return penDown || penActiveRecently() || !fingerDraw;
+  if(e.pointerType==='touch') return penDown || !fingerDraw;
   return false;   // 펜/마우스(그리기 도구)는 그리기
 }
 // 진행 중이던 획을 즉시 마무리(커밋)하고 그리기 상태 해제 — 빠른 연속 필기에서 획 유실 방지
@@ -978,8 +978,8 @@ function onDown(e){
 
   if(wantsNav(e)){ navDown(e.pointerId,l); return; }   // 이동/확대 (필기와 동시 가능)
 
-  // 새 그리기 접점: 이전 획이 아직 살아있으면(뗌 이벤트 유실·빠른 필기) 즉시 마무리하고 새 획 시작
-  if(activePid!=null && activePid!==e.pointerId) preemptActive();
+  // 새 그리기 접점: 이전 획이 아직 살아있으면(뗌 이벤트 유실·빠른 필기·id 재사용) 즉시 마무리하고 새 획 시작
+  if(activePid!=null) preemptActive();
   activePid=e.pointerId;
   startTool(e,l);
 }
