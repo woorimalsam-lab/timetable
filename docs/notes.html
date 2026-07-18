@@ -1219,20 +1219,30 @@ function buildInkBody(strokes, lang){
     writing_guide:{writing_area_width:Math.round(w*scale), writing_area_height:Math.round(h*scale)},
     ink, language:lang}]};
 }
+let _recErr='';   // 마지막 인식 실패 원인(진단 표시용)
+async function tryFetchRecognize(url, body){
+  const ctrl=new AbortController(); const timer=setTimeout(()=>ctrl.abort(),9000);
+  try{
+    const res=await fetch(url,{method:'POST',body,signal:ctrl.signal});
+    if(!res.ok){ _recErr=`HTTP ${res.status}`; return null; }
+    const txt=await res.text();
+    let data; try{ data=JSON.parse(txt); }catch(e){ _recErr='응답 형식 오류'; return null; }
+    if(data[0]==='SUCCESS' && data[1] && data[1][0] && data[1][0][1] && data[1][0][1].length) return data[1][0][1];
+    _recErr='결과 없음'; return null;
+  }catch(e){ _recErr=(e&&e.name==='AbortError')?'시간 초과':'네트워크/CORS 차단'; return null; }
+  finally{ clearTimeout(timer); }
+}
 async function recognizeGroup(strokes, lang){
   if(window.__mockRecognize) return await window.__mockRecognize(strokes,lang);
   const body=JSON.stringify(buildInkBody(strokes,lang));
-  // 널리 검증된 엔드포인트 우선 + 폴백. 헤더 없이 text/plain → CORS 프리플라이트 회피.
-  const urls=['https://www.google.com/inputtools/request?ime=handwriting&app=mobilesearch&dbg=1&cs=1&oe=UTF-8',
-              `https://inputtools.google.com/request?itc=${lang}-t-i0-handwrit&app=ssamnote`];
-  for(const url of urls){
-    const ctrl=new AbortController(); const timer=setTimeout(()=>ctrl.abort(),9000);
-    try{
-      const res=await fetch(url,{method:'POST',body,signal:ctrl.signal});
-      const data=await res.json();
-      if(data[0]==='SUCCESS' && data[1] && data[1][0] && data[1][0][1] && data[1][0][1].length){ clearTimeout(timer); return data[1][0][1]; }
-    }catch(_){}
-    finally{ clearTimeout(timer); }
+  const direct=[`https://inputtools.google.com/request?itc=${lang}-t-i0-handwrit&app=demopage`,
+                'https://www.google.com/inputtools/request?ime=handwriting&app=mobilesearch&dbg=1&cs=1&oe=UTF-8'];
+  // 직접 호출(헤더 없이 text/plain → 프리플라이트 회피)
+  for(const url of direct){ const r=await tryFetchRecognize(url, body); if(r) return r; }
+  // 직접 호출이 CORS/네트워크로 막히면 공개 CORS 프록시로 우회
+  for(const url of direct){
+    const r=await tryFetchRecognize('https://corsproxy.io/?url='+encodeURIComponent(url), body); if(r) return r;
+    const r2=await tryFetchRecognize('https://api.allorigins.win/raw?url='+encodeURIComponent(url), body); if(r2) return r2;
   }
   return [];
 }
@@ -1244,6 +1254,7 @@ async function recognizeLine(strokes, lang){
 }
 // 반환: {text:'여러 줄', cands:[첫 줄 후보들], lines:n}
 async function recognizeInk(strokes, lang){
+  _recErr='';
   const lines=segmentLines(strokes);
   if(lines.length<=1){ const c=await recognizeLine(strokes,lang); return {text:(c[0]||''), cands:c, lines:1}; }
   const outs=[]; let first=[];
@@ -1277,7 +1288,7 @@ function openConvert(){
     const box=pop.querySelector('#cvbody'); box.innerHTML='<div class="cvspin">인식 중…</div>';
     try{
       const {text,cands,lines}=await recognizeInk(strokes, convLang);
-      if(!text && !cands.length){ box.innerHTML='<div class="cvmsg">인식 결과가 없어요. 아래에 직접 입력할 수 있어요.</div>'; return; }
+      if(!text && !cands.length){ box.innerHTML=`<div class="cvmsg">인식 결과가 없어요${_recErr?` (${_recErr})`:''}. 아래에 직접 입력할 수 있어요.</div>`; return; }
       input.value=text||cands[0]||''; grow();
       box.innerHTML='';
       if(lines>1){ box.innerHTML=`<div class="cvmsg" style="padding:8px 4px">📄 ${lines}줄로 인식했어요. 아래에서 확인·수정 후 삽입하세요.</div>`; return; }
