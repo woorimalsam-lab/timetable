@@ -42,6 +42,26 @@
   .tbtn:hover{background:var(--panel2)}
   .tbtn.on{background:var(--accent);color:#fff}
   .tbtn:disabled{opacity:.3;cursor:default}
+  .install-btn{height:38px;padding:0 14px;border-radius:11px;background:var(--accent);color:#fff;
+        font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap;
+        box-shadow:0 4px 12px rgba(10,132,255,.28)}
+  .install-btn:hover{background:var(--accent2)}
+  .install-btn.hidden{display:none}
+  /* iOS 설치 안내 시트 */
+  #iosSheet{position:fixed;inset:0;z-index:200;display:none;align-items:flex-end;justify-content:center;
+        background:rgba(10,15,25,.5);backdrop-filter:blur(2px)}
+  #iosSheet.show{display:flex}
+  #iosSheet .card{background:var(--panel);color:var(--ink);width:100%;max-width:420px;border-radius:20px 20px 0 0;
+        padding:22px 22px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+  #iosSheet h3{margin:0 0 4px;font-size:18px;font-weight:800}
+  #iosSheet p{margin:0 0 16px;color:var(--muted);font-size:13px;line-height:1.5}
+  #iosSheet ol{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:14px}
+  #iosSheet li{display:flex;align-items:center;gap:12px;font-size:15px}
+  #iosSheet .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;
+        display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}
+  #iosSheet .ico{font-size:20px}
+  #iosSheet .ok{margin-top:20px;width:100%;height:46px;border-radius:12px;background:var(--panel2);
+        color:var(--ink);font-weight:700;font-size:15px}
   .title-in{font-size:16px;font-weight:600;color:var(--ink);background:transparent;border:0;outline:0;width:100%;
             padding:6px 8px;border-radius:8px}
   .title-in:focus{background:var(--panel2)}
@@ -308,9 +328,24 @@
 <div id="libbar" class="topbar">
   <div class="brand"><span class="logo">✎</span><span>쌤노트</span></div>
   <div class="grow"></div>
+  <button class="install-btn hidden" id="installBtn" title="앱으로 설치">⤓ 앱 설치</button>
   <button class="tbtn" id="themeBtn" title="테마">◐</button>
 </div>
 <div id="library"></div>
+
+<!-- iOS 앱 설치 안내 -->
+<div id="iosSheet">
+  <div class="card">
+    <h3>홈 화면에 앱으로 추가</h3>
+    <p>Safari에서 아래 순서대로 누르면 쌤노트가 앱처럼 전체화면으로 실행돼요. (오프라인에서도 사용 가능)</p>
+    <ol>
+      <li><span class="num">1</span><span class="ico">􀈂</span><span>아래쪽 <b>공유</b> 버튼(⬆︎ 상자에 화살표) 누르기</span></li>
+      <li><span class="num">2</span><span class="ico">＋</span><span>메뉴에서 <b>‘홈 화면에 추가’</b> 선택</span></li>
+      <li><span class="num">3</span><span class="ico">✎</span><span>오른쪽 위 <b>‘추가’</b> 누르면 완료!</span></li>
+    </ol>
+    <button class="ok" id="iosOk">알겠어요</button>
+  </div>
+</div>
 
 <!-- ===== 에디터 뷰 ===== -->
 <div id="editor" class="hidden">
@@ -1725,5 +1760,35 @@ renderLibrary();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 }
+
+/* 홈 화면 설치 버튼 */
+(function(){
+  const btn=$('#installBtn'), sheet=$('#iosSheet');
+  const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;
+  const ua=navigator.userAgent||'';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  let deferred=null;
+
+  function showBtn(){ btn.classList.remove('hidden'); }
+  function hideBtn(){ btn.classList.add('hidden'); }
+
+  // 이미 앱으로 설치·실행 중이면 버튼 숨김
+  if(isStandalone){ hideBtn(); }
+
+  // Android/데스크톱 Chrome: 설치 프롬프트 캡처
+  addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferred=e; if(!isStandalone) showBtn(); });
+  addEventListener('appinstalled',()=>{ deferred=null; hideBtn(); });
+
+  // iOS Safari는 beforeinstallprompt가 없으므로 안내 시트로 대체
+  if(isIOS && !isStandalone){ showBtn(); }
+
+  btn?.addEventListener('click', async ()=>{
+    if(deferred){ deferred.prompt(); const r=await deferred.userChoice.catch(()=>null); deferred=null; if(r&&r.outcome==='accepted') hideBtn(); }
+    else if(isIOS){ sheet.classList.add('show'); }
+    else { sheet.classList.add('show'); } // 그 외 브라우저도 수동 안내
+  });
+  $('#iosOk')?.addEventListener('click',()=>sheet.classList.remove('show'));
+  sheet?.addEventListener('click',e=>{ if(e.target===sheet) sheet.classList.remove('show'); });
+})();
 </script>
 </body></html>
