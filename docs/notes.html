@@ -463,32 +463,67 @@ function load(){
   return {notebooks:[], theme:null};
 }
 function idbOpen(){ return new Promise((res,rej)=>{
-  const r=indexedDB.open('ssamnote',1);
+  const r=indexedDB.open('ssamnote',2);
   r.onupgradeneeded=()=>{ const d=r.result;
     if(!d.objectStoreNames.contains('kv'))  d.createObjectStore('kv');
-    if(!d.objectStoreNames.contains('bgs')) d.createObjectStore('bgs'); };
+    if(!d.objectStoreNames.contains('bgs')) d.createObjectStore('bgs');
+    if(!d.objectStoreNames.contains('nbs')) d.createObjectStore('nbs'); };   // 노트별 저장(변경분만 기록)
   r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); r.onblocked=()=>rej(new Error('blocked'));
 });}
+function idbGetAll(st){ return new Promise((res,rej)=>{ const q=idb.transaction(st,'readonly').objectStore(st).getAll(); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>rej(q.error); }); }
 function idbPut(st,key,val){ return new Promise((res,rej)=>{ const t=idb.transaction(st,'readwrite'); t.objectStore(st).put(val,key); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
 function idbGet(st,key){ return new Promise((res,rej)=>{ const q=idb.transaction(st,'readonly').objectStore(st).get(key); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }
 function idbDel(st,key){ return new Promise((res,rej)=>{ const t=idb.transaction(st,'readwrite'); t.objectStore(st).delete(key); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
+// 실행취소 기록(_undo/_redo)은 저장하지 않음 — 직렬화 비용을 크게 줄여 필기 끊김 방지
+const NB_JSON=(n)=>JSON.stringify(n,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v);
 async function initStorage(){
   try{ idb=await idbOpen(); }catch(e){ idb=null; return; }   // IDB 불가 시 localStorage로 계속
   navigator.storage?.persist?.().catch(()=>{});               // 브라우저의 임의 삭제 방지 요청
+  // 1) 최신 구조: meta + 노트별 레코드
+  try{
+    const meta=await idbGet('kv','meta');
+    if(meta){
+      const rows=await idbGetAll('nbs');
+      const list=rows.map(s=>{ try{ return (typeof s==='string')?JSON.parse(s):s; }catch(e){ return null; } }).filter(Boolean);
+      const order=Array.isArray(meta.order)?meta.order:[];
+      list.sort((a,b)=>{ const ia=order.indexOf(a.id), ib=order.indexOf(b.id);
+        return (ia<0?1e9:ia)-(ib<0?1e9:ib) || (b.updated||0)-(a.updated||0); });
+      db={...meta, notebooks:list}; delete db.order;
+      return;
+    }
+  }catch(e){}
+  // 2) 구버전: 통짜 레코드(kv 'db') 또는 localStorage → 노트별 구조로 이전
   let d=null;
   try{ const raw=await idbGet('kv','db'); if(raw) d=(typeof raw==='string')?JSON.parse(raw):raw; }catch(e){}
-  if(d && d.notebooks){ db=d; return; }
-  // 최초 1회 이전: PDF 배경 dataURL은 Blob으로 분리 저장
-  for(const n of db.notebooks) for(const p of n.pages){
-    if(p.bg){ try{ const bl=await (await fetch(p.bg)).blob(); await idbPut('bgs',p.id,bl); p.bgId=p.id; delete p.bg; }catch(e){} }
+  if(!(d&&d.notebooks)){
+    d=db;   // localStorage에서 load()된 것
+    for(const n of d.notebooks) for(const p of n.pages){
+      if(p.bg){ try{ const bl=await (await fetch(p.bg)).blob(); await idbPut('bgs',p.id,bl); p.bgId=p.id; delete p.bg; }catch(e){} }
+    }
   }
-  try{ await idbPut('kv','db', JSON.stringify(db)); localStorage.removeItem(DB_KEY); }catch(e){}
+  db=d;
+  try{
+    await _persistMeta();
+    for(const n of db.notebooks) await idbPut('nbs',n.id,NB_JSON(n));
+    await idbDel('kv','db').catch(()=>{});
+    localStorage.removeItem(DB_KEY);
+  }catch(e){}
+}
+function _persistMeta(){
+  const meta={...db, notebooks:undefined, order:db.notebooks.map(n=>n.id)};
+  return idbPut('kv','meta',JSON.parse(JSON.stringify(meta)));
 }
 let saveTimer=null;
+const dirtyNbs=new Set();     // 저장해야 할 노트 id (변경분만 직렬화)
 function _writeDB(){
-  const json=JSON.stringify(db);
-  if(idb){ idbPut('kv','db',json).catch(()=>toast('저장 실패 — 기기 저장 공간을 확인해 주세요')); }
-  else { try{ localStorage.setItem(DB_KEY,json); }catch(e){ toast('저장 공간이 부족합니다'); } }
+  if(!idb){ try{ localStorage.setItem(DB_KEY,JSON.stringify(db,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v)); }catch(e){ toast('저장 공간이 부족합니다'); } return; }
+  _persistMeta().catch(()=>{});
+  for(const id of [...dirtyNbs]){
+    dirtyNbs.delete(id);
+    const n=db.notebooks.find(x=>x.id===id);
+    if(!n){ idbDel('nbs',id).catch(()=>{}); continue; }
+    idbPut('nbs',id,NB_JSON(n)).catch(()=>{ dirtyNbs.add(id); toast('저장 실패 — 기기 저장 공간을 확인해 주세요'); });
+  }
 }
 // localStorage 쓰기는 동기(메인 스레드 차단)라서 필기 도중/직후에 실행되면 다음 획 시작이 늦어짐.
 // iOS Safari는 requestIdleCallback이 없으므로, 펜이 완전히 쉴 때(획 없음 + 마지막 필기 후 1.2초)까지 쓰기를 미룬다.
@@ -514,7 +549,7 @@ function newNotebook(opt){
   const tpl=opt.template||'lined', paper=opt.paper||'cream';
   const nb={id:uid(), title:opt.title||'새 노트', cover:opt.cover||COVERS[db.notebooks.length%COVERS.length],
             template:tpl, paper, created:Date.now(), updated:Date.now(), pages:[newPage(tpl,paper)]};
-  db.notebooks.unshift(nb); saveNow(); return nb;
+  db.notebooks.unshift(nb); dirtyNbs.add(nb.id); saveNow(); return nb;
 }
 const PAPERS={white:'흰색', cream:'크림', gray:'연회색'};
 /* PDF 배경 이미지 (페이지에 bg/bgId가 있으면 템플릿 대신 그림) */
@@ -676,11 +711,11 @@ function bookMenu(n){
   m.onclick=async e=>{
     const a=e.target.closest('button')?.dataset.a; if(!a) return;
     close();
-    if(a==='rn'){ const t=prompt('노트 제목',n.title); if(t!=null){ n.title=t.trim()||'제목 없음'; n.updated=Date.now(); saveNow(); renderLibrary(); } }
+    if(a==='rn'){ const t=prompt('노트 제목',n.title); if(t!=null){ n.title=t.trim()||'제목 없음'; n.updated=Date.now(); dirtyNbs.add(n.id); saveNow(); renderLibrary(); } }
     else if(a==='dup'){ await duplicateNotebook(n); }
     else if(a==='del'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){
       n.pages.forEach(p=>{ if(p.bgId&&idb) idbDel('bgs',p.bgId).catch(()=>{}); bgImgs.delete(p.id); });
-      db.notebooks=db.notebooks.filter(x=>x.id!==n.id); saveNow(); renderLibrary(); } }
+      db.notebooks=db.notebooks.filter(x=>x.id!==n.id); dirtyNbs.add(n.id); saveNow(); renderLibrary(); } }
   };
 }
 /* 노트 복제 — 필기·텍스트·PDF 배경(Blob)까지 새 id로 복사 */
@@ -692,7 +727,7 @@ async function duplicateNotebook(n){
     if(oldBg&&idb){ try{ const bl=await idbGet('bgs',oldBg); if(bl){ await idbPut('bgs',p.id,bl); p.bgId=p.id; } }catch(e){} }
   }
   db.notebooks.splice(db.notebooks.indexOf(n)+1,0,copy);
-  saveNow(); renderLibrary(); toast('복제했어요');
+  dirtyNbs.add(copy.id); saveNow(); renderLibrary(); toast('복제했어요');
 }
 
 /* ---------- 새 노트 만들기: 노트 유형 + 표지 선택 ---------- */
@@ -1155,7 +1190,7 @@ function undo(){ ensureHist(); const op=page._undo.pop(); if(!op)return; applyOp
 function redo(){ ensureHist(); const op=page._redo.pop(); if(!op)return; applyOp(op,'redo'); page._undo.push(op); updateUndoUI(); markDirty(); scheduleRender(); }
 function updateUndoUI(){ ensureHist(); $('#undoBtn').disabled=!page._undo.length; $('#redoBtn').disabled=!page._redo.length; }
 $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo;
-function markDirty(){ if(nb){ nb.updated=Date.now(); save(); } if($('#pages').classList.contains('open')) refreshThumb(pi); }
+function markDirty(){ if(nb){ nb.updated=Date.now(); dirtyNbs.add(nb.id); save(); } if($('#pages').classList.contains('open')) refreshThumb(pi); }
 
 /* ============================ 포인터 입력 ============================ */
 const pointers=new Map();
@@ -1953,7 +1988,7 @@ async function importPDF(file){
                cover:COVERS[db.notebooks.length%COVERS.length],
                template:'blank', paper:'white', created:Date.now(), updated:Date.now(), pages};
   db.notebooks.unshift(nbNew);
-  if(idb){ saveNow(); }
+  if(idb){ dirtyNbs.add(nbNew.id); saveNow(); }
   else{
     // localStorage 폴백: 안 들어가면 되돌리고 알림
     try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
