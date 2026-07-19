@@ -27,7 +27,7 @@
     --paper:#20262e; --pagebg:#0a0d11;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
+  html,body{height:100%;overscroll-behavior:none}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif;
        background:var(--bg);color:var(--ink);overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none}
   button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
@@ -821,6 +821,7 @@ function open(n){
   scheduleRender();
 }
 function closeEditor(){
+  commitSuspended();
   saveNow();
   commitText();
   $('#editor').classList.add('hidden');
@@ -1034,6 +1035,7 @@ function render(){
   ctx.save(); ctx.translate(view.tx,view.ty); ctx.scale(view.s,view.s);
   ctx.beginPath(); ctx.rect(0,0,PAGE_W,PAGE_H); ctx.clip();
   if(active) drawStroke(ctx, active);
+  if(suspended && suspended.page===page) drawStroke(ctx, suspended.stroke);   // 끊겼다 이어질 획도 계속 표시
   drawSelectionOutline(ctx);
   drawTextSelection(ctx);
   ctx.restore();
@@ -1236,6 +1238,10 @@ board.addEventListener('pointermove', onMove);
 board.addEventListener('pointerup', onUp);
 board.addEventListener('pointercancel', onUp);
 board.addEventListener('pointerleave', e=>{ if(e.pointerType==='mouse') onUp(e); });
+// iOS: 보드 위 손 터치가 시스템 제스처(스크롤·3손가락 실행취소 등)로 번지면 그리던 펜 획에
+// pointercancel이 와서 획이 중간에 끊김 → 보드의 터치 기본 동작을 전부 차단
+board.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
+board.addEventListener('touchmove',  e=>e.preventDefault(), {passive:false});
 
 function localXY(e){ const r=board.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
 
@@ -1244,6 +1250,17 @@ function wantsNav(e){
   if(tool==='pan') return true;
   if(e.pointerType==='touch') return penDown || !fingerDraw;
   return false;   // 펜/마우스(그리기 도구)는 그리기
+}
+// 시스템 제스처(pointercancel)로 강제로 끊긴 획 — 짧은 시간 내 펜을 다시 대면 이어서 그림
+let suspended=null;   // {stroke, page, until}
+function commitSuspended(){
+  if(!suspended) return;
+  const st=suspended.stroke, pg=suspended.page; suspended=null;
+  if(!st.points.length) return;
+  pg.strokes.push(st);
+  if(pg===page){ pushUndo({t:'add',stroke:st}); if(!appendToStatic(st)) staticValid=false; }
+  else { staticValid=false; markDirty(); }
+  scheduleRender(true);
 }
 // 진행 중이던 획을 즉시 마무리(커밋)하고 그리기 상태 해제 — 빠른 연속 필기에서 획 유실 방지
 function preemptActive(){
@@ -1280,6 +1297,18 @@ function onDown(e){
   if(e.pointerType==='pen' && nav.size){
     for(const id of [...nav.keys()]){ if(pointers.get(id)?.type==='touch'){ nav.delete(id); } }
     if(nav.size===0){ navPan=null; navPinch=null; }
+  }
+  // 강제 취소로 끊긴 획이 있으면: 같은 페이지·같은 도구·시간 내 재접촉 → 그 획을 이어서 그림
+  if(suspended){
+    const now=(typeof performance!=='undefined'?performance.now():0);
+    if(e.pointerType==='pen' && suspended.page===page && now<suspended.until
+       && (tool==='pen'||tool==='highlighter') && suspended.stroke.tool===tool){
+      active=suspended.stroke; suspended=null; activePid=e.pointerId;
+      invalidateInk(active);
+      const p=toPage(l.x,l.y); active.points.push({x:p.x,y:p.y,p:pressure(e,p,true)});
+      scheduleRender(true); return;
+    }
+    commitSuspended();
   }
   // 새 그리기 접점: 이전 획이 아직 살아있으면(뗌 이벤트 유실·빠른 필기·id 재사용) 즉시 마무리하고 새 획 시작
   if(activePid!=null) preemptActive();
@@ -1371,6 +1400,14 @@ function onUp(e){
   if(e.pointerId!==activePid) return;
   activePid=null;
   _penUpT=(typeof performance!=='undefined'?performance.now():0);  // 어떤 포인터든 획이 끝난 시각(저장 지연 판단용)
+
+  // 시스템 제스처가 획을 강제 취소한 경우: 바로 커밋하지 않고 잠시 살려둠 → 0.8초 내 재접촉 시 이어 그림
+  if(e.type==='pointercancel' && active && (active.tool==='pen'||active.tool==='highlighter') && active.points.length){
+    suspended={stroke:active, page, until:_penUpT+800};
+    active=null; scheduleRender(true);
+    const s=suspended; setTimeout(()=>{ if(suspended===s) commitSuspended(); },850);
+    return;
+  }
 
   if(active){
     let committed=null;
@@ -1844,7 +1881,7 @@ function refreshPageUI(){
   updateUndoUI();
 }
 function gotoPage(i){
-  commitText(); clearSelection(); clearTextSel();
+  commitSuspended(); commitText(); clearSelection(); clearTextSel();
   pi=clamp(i,0,nb.pages.length-1); page=nb.pages[pi];
   refreshPageUI(); fitPage(); scheduleRender();
   document.querySelectorAll('#plist .thumb').forEach((t,k)=>t.classList.toggle('on',k===pi));
