@@ -1,12 +1,14 @@
 /* 쌤노트 서비스워커 — 앱 셸 캐시 (오프라인 실행) */
-const CACHE = 'ssamnote-v1';
+const CACHE = 'ssamnote-v2';
 const ASSETS = [
   './notes.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  './vendor/pdf.min.mjs',
+  './vendor/pdf.worker.min.mjs'
 ];
 
 self.addEventListener('install', e => {
