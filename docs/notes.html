@@ -98,6 +98,16 @@
   .card .cap{margin-top:9px;font-size:13px;font-weight:600;text-align:center;color:var(--ink);
              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
   .card .cap small{display:block;color:var(--muted);font-weight:400;font-size:11px;margin-top:1px}
+  /* 서재 카드: 메뉴 버튼(⋯) + 길게 눌러 드래그 정렬 */
+  .card{position:relative}
+  .card .more{position:absolute;top:8px;right:8px;z-index:3;width:30px;height:30px;border-radius:9px;
+        display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;font-weight:800;
+        background:rgba(0,0,0,.22)}
+  .card .more:hover{background:rgba(0,0,0,.4)}
+  .card.dragging{opacity:.35}
+  .dragghost{position:fixed;z-index:300;pointer-events:none;margin:0;
+        filter:drop-shadow(0 14px 28px rgba(0,0,0,.35))}
+  .dragghost .more{display:none}
 
   /* ---------- 에디터 ---------- */
   #editor{position:absolute;inset:0;display:flex;flex-direction:column}
@@ -279,6 +289,7 @@
   .zoomg2{display:flex;align-items:center;gap:2px;flex:0 0 auto}
   .gnz{height:34px;min-width:34px;border-radius:9px;color:var(--ink);font-size:15px;display:flex;align-items:center;justify-content:center;padding:0 6px}
   .gnz:hover{background:var(--panel)}
+  .gnz:disabled{opacity:.25;cursor:default}
   .gnz.zlabel{font-weight:700;font-size:13px;color:var(--muted);min-width:52px}
 
   /* 드롭다운 메뉴 */
@@ -393,7 +404,9 @@
     <span class="gnsep2 tool-only" id="sizeSep"></span>
     <div class="sizes" id="sizes"></div>
     <span class="gngrow"></span>
+    <button class="gnz" id="pgPrev" title="이전 쪽">‹</button>
     <span class="gnz zlabel" style="pointer-events:none" id="pageInd">1 / 1</span>
+    <button class="gnz" id="pgNext" title="다음 쪽">›</button>
     <span class="gnsep2"></span>
     <div class="zoomg2">
       <button class="gnz" id="zoomOut" title="축소">－</button>
@@ -576,7 +589,7 @@ function renderLibrary(){
   grid.appendChild(pdfCard);
 
   for(const n of db.notebooks){
-    const card=el('div','card');
+    const card=el('div','card'); card.dataset.nid=n.id;
     const d=new Date(n.updated);
     const dd=`${d.getMonth()+1}/${d.getDate()}`;
     card.innerHTML=`
@@ -585,21 +598,101 @@ function renderLibrary(){
         <div class="ct"><div class="t">${esc(n.title)}</div><div class="m">${n.pages.length}쪽 · ${dd}</div></div>
       </div>
       <div class="cap">${esc(n.title)}<small>${n.pages.length}쪽</small></div>`;
+    const more=el('button','more'); more.textContent='⋯'; more.title='노트 메뉴'; card.appendChild(more);
+    more.onclick=e=>{ e.stopPropagation(); bookMenu(n); };
     card.querySelector('.cover').onclick=()=>open(n);
     card.querySelector('.cap').onclick=()=>open(n);
-    // 길게 눌러 삭제/이름변경
-    let lt; const dn=()=>{lt=setTimeout(()=>bookMenu(n),550);}; const up=()=>clearTimeout(lt);
-    card.addEventListener('pointerdown',dn); card.addEventListener('pointerup',up); card.addEventListener('pointerleave',up);
+    attachCardDrag(card,n);   // 길게 눌러 들어서 순서 이동, 그대로 떼면 메뉴
     grid.appendChild(card);
   }
   wrap.appendChild(grid);
 }
+
+/* ---------- 서재: 길게 눌러 드래그로 순서 이동 ---------- */
+let cardDrag=null;
+$('#library').addEventListener('touchmove',e=>{ if(cardDrag&&cardDrag.lifted) e.preventDefault(); },{passive:false});
+function liftCard(d){
+  d.lifted=true; d.movedAfterLift=false;
+  const r=d.card.getBoundingClientRect();
+  const g=d.card.cloneNode(true); g.classList.add('dragghost');
+  g.style.left=r.left+'px'; g.style.top=r.top+'px'; g.style.width=r.width+'px';
+  document.body.appendChild(g); d.ghost=g;
+  d.card.classList.add('dragging');
+  if(navigator.vibrate) navigator.vibrate(10);
+}
+function attachCardDrag(card,n){
+  card.addEventListener('pointerdown',e=>{
+    if(e.button) return;
+    if(e.target.closest('.more')) return;
+    const d={card,n,id:e.pointerId,x0:e.clientX,y0:e.clientY,lifted:false,moved:false,ghost:null};
+    cardDrag=d;
+    d.timer=setTimeout(()=>{ if(cardDrag===d && !d.moved) liftCard(d); },420);
+  });
+}
+// 이동/드롭은 문서 레벨에서 추적 (포인터가 카드 밖으로 나가도 계속됨)
+addEventListener('pointermove',e=>{
+  const d=cardDrag; if(!d||e.pointerId!==d.id) return;
+  const dx=e.clientX-d.x0, dy=e.clientY-d.y0;
+  if(!d.lifted){ if(Math.hypot(dx,dy)>10){ d.moved=true; clearTimeout(d.timer); } return; }
+  if(Math.hypot(dx,dy)>8) d.movedAfterLift=true;
+  d.ghost.style.transform=`translate(${dx}px,${dy}px) scale(1.04)`;
+  const t=document.elementFromPoint(e.clientX,e.clientY)?.closest('.card[data-nid]');
+  if(t&&t!==d.card){
+    const r=t.getBoundingClientRect();
+    t.parentNode.insertBefore(d.card, (e.clientX < r.left+r.width/2)?t:t.nextSibling);
+  }
+});
+function cardDragEnd(e){
+  const d=cardDrag; if(!d||e.pointerId!==d.id) return;
+  clearTimeout(d.timer); cardDrag=null;
+  if(!d.lifted) return;                        // 그냥 탭/스크롤이었음
+  d.ghost.remove(); d.card.classList.remove('dragging');
+  if(e.type!=='pointercancel' && d.movedAfterLift){
+    const order=[...document.querySelectorAll('#library .card[data-nid]')].map(c=>c.dataset.nid);
+    db.notebooks.sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
+    saveNow();
+  } else if(e.type!=='pointercancel'){ bookMenu(d.n); }   // 들었다가 그대로 떼면 메뉴
+  renderLibrary();
+}
+addEventListener('pointerup',cardDragEnd);
+addEventListener('pointercancel',cardDragEnd);
 function bookMenu(n){
-  const what=prompt(`"${n.title}"\n\n1: 이름 변경\n2: 삭제\n\n번호 입력`,'1');
-  if(what==='1'){ const t=prompt('노트 제목',n.title); if(t!=null){ n.title=t.trim()||'제목 없음'; n.updated=Date.now(); saveNow(); renderLibrary(); } }
-  else if(what==='2'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){
-    n.pages.forEach(p=>{ if(p.bgId&&idb) idbDel('bgs',p.bgId).catch(()=>{}); bgImgs.delete(p.id); });
-    db.notebooks=db.notebooks.filter(x=>x.id!==n.id); saveNow(); renderLibrary(); } }
+  $('#menu')?.remove(); $('#backdrop')?.remove();
+  const bd=el('div','backdrop'); bd.id='backdrop';
+  bd.style.cssText='position:fixed;inset:0;z-index:140;background:rgba(10,15,25,.35)';
+  document.body.appendChild(bd);
+  const m=el('div','menu'); m.id='menu';
+  m.style.cssText='position:fixed;left:50%;top:50%;right:auto;transform:translate(-50%,-50%);z-index:150';
+  m.innerHTML=`
+    <div style="padding:10px 14px 8px;font-weight:800;font-size:15px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n.title)}</div>
+    <div class="div"></div>
+    <button data-a="rn"><span class="ic">✏️</span> 이름 변경</button>
+    <button data-a="dup"><span class="ic">📑</span> 복제</button>
+    <div class="div"></div>
+    <button data-a="del" class="danger"><span class="ic">🗑️</span> 삭제</button>`;
+  document.body.appendChild(m);
+  const close=()=>{ m.remove(); bd.remove(); };
+  bd.onclick=close;
+  m.onclick=async e=>{
+    const a=e.target.closest('button')?.dataset.a; if(!a) return;
+    close();
+    if(a==='rn'){ const t=prompt('노트 제목',n.title); if(t!=null){ n.title=t.trim()||'제목 없음'; n.updated=Date.now(); saveNow(); renderLibrary(); } }
+    else if(a==='dup'){ await duplicateNotebook(n); }
+    else if(a==='del'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){
+      n.pages.forEach(p=>{ if(p.bgId&&idb) idbDel('bgs',p.bgId).catch(()=>{}); bgImgs.delete(p.id); });
+      db.notebooks=db.notebooks.filter(x=>x.id!==n.id); saveNow(); renderLibrary(); } }
+  };
+}
+/* 노트 복제 — 필기·텍스트·PDF 배경(Blob)까지 새 id로 복사 */
+async function duplicateNotebook(n){
+  const copy=JSON.parse(JSON.stringify(n,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v));
+  copy.id=uid(); copy.title=n.title+' (복사본)'; copy.created=Date.now(); copy.updated=Date.now();
+  for(const p of copy.pages){
+    const oldBg=p.bgId; p.id=uid(); delete p.bgId;
+    if(oldBg&&idb){ try{ const bl=await idbGet('bgs',oldBg); if(bl){ await idbPut('bgs',p.id,bl); p.bgId=p.id; } }catch(e){} }
+  }
+  db.notebooks.splice(db.notebooks.indexOf(n)+1,0,copy);
+  saveNow(); renderLibrary(); toast('복제했어요');
 }
 
 /* ---------- 새 노트 만들기: 노트 유형 + 표지 선택 ---------- */
@@ -815,6 +908,8 @@ function zoomBy(f){
 $('#zoomIn').onclick=()=>zoomBy(1.25);
 $('#zoomOut').onclick=()=>zoomBy(0.8);
 $('#zoomLabel').onclick=fitPage;
+$('#pgPrev').onclick=()=>{ if(pi>0) gotoPage(pi-1); };
+$('#pgNext').onclick=()=>{ if(pi<nb.pages.length-1) gotoPage(pi+1); };
 const toPage = (sx,sy)=>({x:(sx-view.tx)/view.s, y:(sy-view.ty)/view.s});
 const toScreen=(px,py)=>({x:px*view.s+view.tx, y:py*view.s+view.ty});
 function clampView(){
@@ -1258,7 +1353,7 @@ function navStartPinch(){ const v=[...nav.values()]; const [a,b]=v;
   navPinch={d:dist(a,b)||1, cx:(a.x+b.x)/2, cy:(a.y+b.y)/2, s0:view.s, tx0:view.tx, ty0:view.ty}; }
 function navDown(id,l){
   nav.set(id,{x:l.x,y:l.y});
-  if(nav.size===1){ navPan={id,x:l.x,y:l.y}; navPinch=null; }
+  if(nav.size===1){ navPan={id,x:l.x,y:l.y,x0:l.x,y0:l.y}; navPinch=null; }
   else if(nav.size===2){ navPan=null; navStartPinch(); }
 }
 function navMove(id,l){
@@ -1274,9 +1369,18 @@ function navMove(id,l){
   }
 }
 function navUp(id){
+  const p=nav.get(id);
+  // 화면 맞춤 배율에서 좌우로 크게 쓸면 페이지 넘김 (확대 중엔 이동 우선)
+  if(navPan && navPan.id===id && p && view.s<=fitScale*1.05){
+    const dx=p.x-navPan.x0, dy=p.y-navPan.y0;
+    if(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*1.4){
+      if(dx<0 && pi<nb.pages.length-1) gotoPage(pi+1);
+      else if(dx>0 && pi>0) gotoPage(pi-1);
+    }
+  }
   nav.delete(id);
   if(nav.size===0){ navPan=null; navPinch=null; }
-  else if(nav.size===1){ const [rid]=[...nav.keys()]; const rp=nav.get(rid); navPan={id:rid,x:rp.x,y:rp.y}; navPinch=null; }
+  else if(nav.size===1){ const [rid]=[...nav.keys()]; const rp=nav.get(rid); navPan={id:rid,x:rp.x,y:rp.y,x0:rp.x,y0:rp.y}; navPinch=null; }
   else { navStartPinch(); }
 }
 
@@ -1664,7 +1768,12 @@ $('#exportBtn').onclick=()=>{
   m.onclick=e=>{ const a=e.target.closest('button')?.dataset.a; m.remove();bd.remove(); if(a==='png')exportPNG(); else if(a==='pdf')exportPDF(); };
 };
 
-function refreshPageUI(){ $('#pageInd').textContent=`${pi+1} / ${nb.pages.length}`; updateUndoUI(); }
+function refreshPageUI(){
+  $('#pageInd').textContent=`${pi+1} / ${nb.pages.length}`;
+  $('#pgPrev').disabled = pi<=0;
+  $('#pgNext').disabled = pi>=nb.pages.length-1;
+  updateUndoUI();
+}
 function gotoPage(i){
   commitText(); clearSelection(); clearTextSel();
   pi=clamp(i,0,nb.pages.length-1); page=nb.pages[pi];
