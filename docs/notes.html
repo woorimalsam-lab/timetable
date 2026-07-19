@@ -32,9 +32,14 @@
        background:var(--bg);color:var(--ink);overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none}
   button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
   .hidden{display:none!important}
+  /* iOS 상태바(시계) 영역: 흰 시계 글씨가 잘 보이도록 남색 띠로 채움 */
+  body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);
+               background:var(--gn-blue-d,#3d5390);z-index:90;pointer-events:none}
 
   /* ---------- 공통 상단 바 ---------- */
-  .topbar{height:56px;display:flex;align-items:center;gap:8px;padding:0 12px;
+  /* 상태바(시계·배터리)와 겹치지 않도록 safe-area만큼 아래로 내림 */
+  .topbar{height:calc(56px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:8px;
+          padding:env(safe-area-inset-top,0px) calc(12px + env(safe-area-inset-right,0px)) 0 calc(12px + env(safe-area-inset-left,0px));
           background:var(--panel);border-bottom:1px solid var(--line);position:relative;z-index:30}
   .topbar .grow{flex:1;min-width:0}
   .tbtn{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;
@@ -71,7 +76,8 @@
   .pageind{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
 
   /* ---------- 서재(라이브러리) ---------- */
-  #library{position:absolute;inset:56px 0 0 0;overflow:auto;padding:22px;-webkit-overflow-scrolling:touch}
+  #library{position:absolute;inset:calc(56px + env(safe-area-inset-top,0px)) 0 0 0;overflow:auto;
+           padding:22px 22px calc(22px + env(safe-area-inset-bottom,0px));-webkit-overflow-scrolling:touch}
   .shelf-head{max-width:1100px;margin:0 auto 18px;display:flex;align-items:center;gap:12px}
   .shelf-head h2{margin:0;font-size:22px;font-weight:800;letter-spacing:-.4px}
   .shelf-head .sub{color:var(--muted);font-size:13px;margin-top:2px}
@@ -159,6 +165,7 @@
   /* 페이지 썸네일 사이드 */
   #pages{position:absolute;top:0;right:0;bottom:0;width:170px;z-index:26;background:var(--panel);
          border-left:1px solid var(--line);box-shadow:-8px 0 30px rgba(0,0,0,.12);
+         padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
          transform:translateX(100%);transition:transform .22s;display:flex;flex-direction:column}
   #pages.open{transform:none}
   #pages .ph{padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:14px;
@@ -230,7 +237,9 @@
   /* ===== GoodNotes 스타일 상단 크롬 ===== */
   :root{--gn-blue:#48609f;--gn-blue-d:#3d5390;--gn-tabbg:#e7e5d6;}
   html[data-theme="dark"]{--gn-blue:#3a4c85;--gn-blue-d:#31406f;--gn-tabbg:#20262e;}
-  .gntabs{display:flex;align-items:center;gap:3px;height:44px;padding:0 8px;background:var(--gn-blue-d)}
+  .gntabs{display:flex;align-items:center;gap:3px;height:calc(44px + env(safe-area-inset-top,0px));
+          padding:env(safe-area-inset-top,0px) calc(8px + env(safe-area-inset-right,0px)) 0 calc(8px + env(safe-area-inset-left,0px));
+          background:var(--gn-blue-d)}
   .gnhome{width:36px;height:36px;color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center;border-radius:9px;flex:0 0 auto}
   .gnhome:hover{background:rgba(255,255,255,.15)}
   .tabstrip{display:flex;align-items:flex-end;gap:3px;flex:1;overflow-x:auto;height:100%;scrollbar-width:none;padding-top:8px}
