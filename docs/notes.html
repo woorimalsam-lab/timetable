@@ -1257,10 +1257,10 @@ function preemptActive(){
 }
 function onDown(e){
   const l=localXY(e); l.type=e.pointerType;
-  // 펜으로 획을 그리는 동안 들어오는 손/손바닥 터치는 완전히 무시 → 화면이 밀려 획이 끊기지 않도록
-  if(e.pointerType==='touch' && active && pointers.get(activePid)?.type==='pen') return;
-  // 펜 필기 중 아주 큰 접촉(손바닥)도 무시
-  if(e.pointerType==='touch' && penDown && Math.max(e.width||0,e.height||0) > 90) return;
+  // 손바닥(큰 접촉면)은 언제나 무시 — 획 사이에 손이 닿아도 화면이 밀리지 않게
+  if(e.pointerType==='touch' && Math.max(e.width||0,e.height||0) > 50) return;
+  // 펜이 닿아 있는 동안(획 그리는 중 포함)의 손 터치는 전부 무시
+  if(e.pointerType==='touch' && (penDown || (active && pointers.get(activePid)?.type==='pen'))) return;
 
   // 손가락으로 그리던 중 '또 다른' 손가락이 닿으면 두 손가락 확대로 전환
   if(e.pointerType==='touch' && activePid!=null && pointers.get(activePid)?.type==='touch'){
@@ -1276,6 +1276,11 @@ function onDown(e){
 
   if(wantsNav(e)){ navDown(e.pointerId,l); return; }   // 이동/확대 (필기와 동시 가능)
 
+  // 펜 필기 시작: 이미 등록된 손 이동 포인터(대개 화면에 얹힌 손바닥)는 해제 → 필기 중 화면 밀림 방지
+  if(e.pointerType==='pen' && nav.size){
+    for(const id of [...nav.keys()]){ if(pointers.get(id)?.type==='touch'){ nav.delete(id); } }
+    if(nav.size===0){ navPan=null; navPinch=null; }
+  }
   // 새 그리기 접점: 이전 획이 아직 살아있으면(뗌 이벤트 유실·빠른 필기·id 재사용) 즉시 마무리하고 새 획 시작
   if(activePid!=null) preemptActive();
   activePid=e.pointerId;
@@ -1413,11 +1418,13 @@ function navStartPinch(){ const v=[...nav.values()]; const [a,b]=v;
   navPinch={d:dist(a,b)||1, cx:(a.x+b.x)/2, cy:(a.y+b.y)/2, s0:view.s, tx0:view.tx, ty0:view.ty}; }
 function navDown(id,l){
   nav.set(id,{x:l.x,y:l.y});
-  if(nav.size===1){ navPan={id,x:l.x,y:l.y,x0:l.x,y0:l.y}; navPinch=null; }
+  const now=(typeof performance!=='undefined'?performance.now():0);
+  if(nav.size===1){ navPan={id,x:l.x,y:l.y,x0:l.x,y0:l.y,t0:now}; navPinch=null; }
   else if(nav.size===2){ navPan=null; navStartPinch(); }
 }
 function navMove(id,l){
   if(!nav.has(id))return; nav.set(id,{x:l.x,y:l.y});
+  if(penDown) return;   // 펜이 닿아 있는 동안엔 화면 고정(남은 손바닥 드리프트 방지)
   if(nav.size>=2 && navPinch){
     const v=[...nav.values()]; const [a,b]=v;
     const d=dist(a,b), cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
@@ -1430,8 +1437,10 @@ function navMove(id,l){
 }
 function navUp(id){
   const p=nav.get(id);
-  // 화면 맞춤 배율에서 좌우로 크게 쓸면 페이지 넘김 (확대 중엔 이동 우선)
-  if(navPan && navPan.id===id && p && view.s<=fitScale*1.05){
+  const now=(typeof performance!=='undefined'?performance.now():0);
+  // 화면 맞춤 배율에서 좌우로 '빠르게' 쓸면 페이지 넘김 (확대 중·펜 사용 직후·느린 끌기는 제외)
+  if(navPan && navPan.id===id && p && view.s<=fitScale*1.05
+     && (now-(navPan.t0||0))<700 && (now-_penUpT)>350){
     const dx=p.x-navPan.x0, dy=p.y-navPan.y0;
     if(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*1.4){
       if(dx<0 && pi<nb.pages.length-1) gotoPage(pi+1);
@@ -1440,7 +1449,7 @@ function navUp(id){
   }
   nav.delete(id);
   if(nav.size===0){ navPan=null; navPinch=null; }
-  else if(nav.size===1){ const [rid]=[...nav.keys()]; const rp=nav.get(rid); navPan={id:rid,x:rp.x,y:rp.y,x0:rp.x,y0:rp.y}; navPinch=null; }
+  else if(nav.size===1){ const [rid]=[...nav.keys()]; const rp=nav.get(rid); navPan={id:rid,x:rp.x,y:rp.y,x0:rp.x,y0:rp.y,t0:now}; navPinch=null; }
   else { navStartPinch(); }
 }
 
