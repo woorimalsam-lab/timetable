@@ -463,23 +463,30 @@ function load(){
   return {notebooks:[], theme:null};
 }
 function idbOpen(){ return new Promise((res,rej)=>{
-  const r=indexedDB.open('ssamnote',2);
+  const r=indexedDB.open('ssamnote',3);
   r.onupgradeneeded=()=>{ const d=r.result;
     if(!d.objectStoreNames.contains('kv'))  d.createObjectStore('kv');
     if(!d.objectStoreNames.contains('bgs')) d.createObjectStore('bgs');
-    if(!d.objectStoreNames.contains('nbs')) d.createObjectStore('nbs'); };   // 노트별 저장(변경분만 기록)
+    if(!d.objectStoreNames.contains('nbs')) d.createObjectStore('nbs');     // 노트 껍데기(제목·표지·페이지 목록)
+    if(!d.objectStoreNames.contains('pgs')) d.createObjectStore('pgs'); };  // 페이지 내용(획·텍스트) — 페이지 단위 저장
   r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); r.onblocked=()=>rej(new Error('blocked'));
 });}
 function idbGetAll(st){ return new Promise((res,rej)=>{ const q=idb.transaction(st,'readonly').objectStore(st).getAll(); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>rej(q.error); }); }
+function idbGetAllKeys(st){ return new Promise((res,rej)=>{ const q=idb.transaction(st,'readonly').objectStore(st).getAllKeys(); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>rej(q.error); }); }
 function idbPut(st,key,val){ return new Promise((res,rej)=>{ const t=idb.transaction(st,'readwrite'); t.objectStore(st).put(val,key); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
 function idbGet(st,key){ return new Promise((res,rej)=>{ const q=idb.transaction(st,'readonly').objectStore(st).get(key); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }
 function idbDel(st,key){ return new Promise((res,rej)=>{ const t=idb.transaction(st,'readwrite'); t.objectStore(st).delete(key); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
-// 실행취소 기록(_undo/_redo)은 저장하지 않음 — 직렬화 비용을 크게 줄여 필기 끊김 방지
-const NB_JSON=(n)=>JSON.stringify(n,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v);
+// 실행취소 기록(_undo/_redo)은 저장하지 않음(메모리 전용) — 직렬화 비용 절감
+// 저장 단위: 노트 '껍데기'(제목·표지·페이지 목록)와 '페이지 내용'(획·텍스트)을 분리.
+// 필기 중 저장은 '방금 쓴 페이지 하나'만 직렬화 → 노트가 아무리 커져도 저장 비용이 일정(끊김 방지).
+const nbShell=(n)=>JSON.stringify({...n, pages:n.pages.map(p=>({id:p.id,template:p.template,paper:p.paper,bgId:p.bgId}))},
+                                  (k,v)=>(k==='_undo'||k==='_redo')?undefined:v);
+const pgJSON=(p)=>JSON.stringify({strokes:p.strokes||[], texts:p.texts||[]});
+function findPageById(pid){ for(const n of db.notebooks){ const p=n.pages.find(x=>x.id===pid); if(p) return p; } return null; }
 async function initStorage(){
   try{ idb=await idbOpen(); }catch(e){ idb=null; return; }   // IDB 불가 시 localStorage로 계속
   navigator.storage?.persist?.().catch(()=>{});               // 브라우저의 임의 삭제 방지 요청
-  // 1) 최신 구조: meta + 노트별 레코드
+  let legacy=false;
   try{
     const meta=await idbGet('kv','meta');
     if(meta){
@@ -488,33 +495,45 @@ async function initStorage(){
       const order=Array.isArray(meta.order)?meta.order:[];
       list.sort((a,b)=>{ const ia=order.indexOf(a.id), ib=order.indexOf(b.id);
         return (ia<0?1e9:ia)-(ib<0?1e9:ib) || (b.updated||0)-(a.updated||0); });
+      // 페이지 내용 붙이기 (v2 레코드는 노트에 내용이 통째로 들어있음 → 페이지 단위로 재저장)
+      const pgKeys=await idbGetAllKeys('pgs'), pgVals=await idbGetAll('pgs');
+      const pgMap=new Map(pgKeys.map((k,i)=>[k,pgVals[i]]));
+      for(const n of list) for(const p of n.pages){
+        if(Array.isArray(p.strokes)){ legacy=true; continue; }            // v2: 내용 인라인
+        let c=pgMap.get(p.id); try{ c=(typeof c==='string')?JSON.parse(c):c; }catch(e){ c=null; }
+        p.strokes=(c&&c.strokes)||[]; p.texts=(c&&c.texts)||[];
+      }
       db={...meta, notebooks:list}; delete db.order;
-      return;
+      if(!legacy) return;
+    }else{
+      // 구버전: 통짜 레코드(kv 'db') 또는 localStorage
+      let d=null;
+      try{ const raw=await idbGet('kv','db'); if(raw) d=(typeof raw==='string')?JSON.parse(raw):raw; }catch(e){}
+      if(!(d&&d.notebooks)){
+        d=db;   // localStorage에서 load()된 것
+        for(const n of d.notebooks) for(const p of n.pages){
+          if(p.bg){ try{ const bl=await (await fetch(p.bg)).blob(); await idbPut('bgs',p.id,bl); p.bgId=p.id; delete p.bg; }catch(e){} }
+        }
+      }
+      db=d; legacy=true;
     }
   }catch(e){}
-  // 2) 구버전: 통짜 레코드(kv 'db') 또는 localStorage → 노트별 구조로 이전
-  let d=null;
-  try{ const raw=await idbGet('kv','db'); if(raw) d=(typeof raw==='string')?JSON.parse(raw):raw; }catch(e){}
-  if(!(d&&d.notebooks)){
-    d=db;   // localStorage에서 load()된 것
-    for(const n of d.notebooks) for(const p of n.pages){
-      if(p.bg){ try{ const bl=await (await fetch(p.bg)).blob(); await idbPut('bgs',p.id,bl); p.bgId=p.id; delete p.bg; }catch(e){} }
-    }
+  if(legacy){ // 전부 새 구조로 재저장 (최초 1회)
+    try{
+      for(const n of db.notebooks){ dirtyNbs.add(n.id); n.pages.forEach(p=>dirtyPgs.add(p.id)); }
+      _writeDB();
+      await idbDel('kv','db').catch(()=>{});
+      localStorage.removeItem(DB_KEY);
+    }catch(e){}
   }
-  db=d;
-  try{
-    await _persistMeta();
-    for(const n of db.notebooks) await idbPut('nbs',n.id,NB_JSON(n));
-    await idbDel('kv','db').catch(()=>{});
-    localStorage.removeItem(DB_KEY);
-  }catch(e){}
 }
 function _persistMeta(){
   const meta={...db, notebooks:undefined, order:db.notebooks.map(n=>n.id)};
   return idbPut('kv','meta',JSON.parse(JSON.stringify(meta)));
 }
 let saveTimer=null;
-const dirtyNbs=new Set();     // 저장해야 할 노트 id (변경분만 직렬화)
+const dirtyNbs=new Set();     // 저장할 노트 껍데기 id
+const dirtyPgs=new Set();     // 저장할 페이지 id (변경된 페이지만 직렬화)
 function _writeDB(){
   if(!idb){ try{ localStorage.setItem(DB_KEY,JSON.stringify(db,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v)); }catch(e){ toast('저장 공간이 부족합니다'); } return; }
   _persistMeta().catch(()=>{});
@@ -522,7 +541,13 @@ function _writeDB(){
     dirtyNbs.delete(id);
     const n=db.notebooks.find(x=>x.id===id);
     if(!n){ idbDel('nbs',id).catch(()=>{}); continue; }
-    idbPut('nbs',id,NB_JSON(n)).catch(()=>{ dirtyNbs.add(id); toast('저장 실패 — 기기 저장 공간을 확인해 주세요'); });
+    idbPut('nbs',id,nbShell(n)).catch(()=>{ dirtyNbs.add(id); toast('저장 실패 — 기기 저장 공간을 확인해 주세요'); });
+  }
+  for(const pid of [...dirtyPgs]){
+    dirtyPgs.delete(pid);
+    const pg=findPageById(pid);
+    if(!pg){ idbDel('pgs',pid).catch(()=>{}); continue; }
+    idbPut('pgs',pid,pgJSON(pg)).catch(()=>{ dirtyPgs.add(pid); toast('저장 실패 — 기기 저장 공간을 확인해 주세요'); });
   }
 }
 // localStorage 쓰기는 동기(메인 스레드 차단)라서 필기 도중/직후에 실행되면 다음 획 시작이 늦어짐.
@@ -549,7 +574,7 @@ function newNotebook(opt){
   const tpl=opt.template||'lined', paper=opt.paper||'cream';
   const nb={id:uid(), title:opt.title||'새 노트', cover:opt.cover||COVERS[db.notebooks.length%COVERS.length],
             template:tpl, paper, created:Date.now(), updated:Date.now(), pages:[newPage(tpl,paper)]};
-  db.notebooks.unshift(nb); dirtyNbs.add(nb.id); saveNow(); return nb;
+  db.notebooks.unshift(nb); dirtyNbs.add(nb.id); nb.pages.forEach(p=>dirtyPgs.add(p.id)); saveNow(); return nb;
 }
 const PAPERS={white:'흰색', cream:'크림', gray:'연회색'};
 /* PDF 배경 이미지 (페이지에 bg/bgId가 있으면 템플릿 대신 그림) */
@@ -714,7 +739,7 @@ function bookMenu(n){
     if(a==='rn'){ const t=prompt('노트 제목',n.title); if(t!=null){ n.title=t.trim()||'제목 없음'; n.updated=Date.now(); dirtyNbs.add(n.id); saveNow(); renderLibrary(); } }
     else if(a==='dup'){ await duplicateNotebook(n); }
     else if(a==='del'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){
-      n.pages.forEach(p=>{ if(p.bgId&&idb) idbDel('bgs',p.bgId).catch(()=>{}); bgImgs.delete(p.id); });
+      n.pages.forEach(p=>{ if(idb){ if(p.bgId) idbDel('bgs',p.bgId).catch(()=>{}); idbDel('pgs',p.id).catch(()=>{}); } bgImgs.delete(p.id); });
       db.notebooks=db.notebooks.filter(x=>x.id!==n.id); dirtyNbs.add(n.id); saveNow(); renderLibrary(); } }
   };
 }
@@ -727,7 +752,7 @@ async function duplicateNotebook(n){
     if(oldBg&&idb){ try{ const bl=await idbGet('bgs',oldBg); if(bl){ await idbPut('bgs',p.id,bl); p.bgId=p.id; } }catch(e){} }
   }
   db.notebooks.splice(db.notebooks.indexOf(n)+1,0,copy);
-  dirtyNbs.add(copy.id); saveNow(); renderLibrary(); toast('복제했어요');
+  dirtyNbs.add(copy.id); copy.pages.forEach(p=>dirtyPgs.add(p.id)); saveNow(); renderLibrary(); toast('복제했어요');
 }
 
 /* ---------- 새 노트 만들기: 노트 유형 + 표지 선택 ---------- */
@@ -1190,7 +1215,7 @@ function undo(){ ensureHist(); const op=page._undo.pop(); if(!op)return; applyOp
 function redo(){ ensureHist(); const op=page._redo.pop(); if(!op)return; applyOp(op,'redo'); page._undo.push(op); updateUndoUI(); markDirty(); scheduleRender(); }
 function updateUndoUI(){ ensureHist(); $('#undoBtn').disabled=!page._undo.length; $('#redoBtn').disabled=!page._redo.length; }
 $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo;
-function markDirty(){ if(nb){ nb.updated=Date.now(); dirtyNbs.add(nb.id); save(); } if($('#pages').classList.contains('open')) refreshThumb(pi); }
+function markDirty(){ if(nb){ nb.updated=Date.now(); dirtyNbs.add(nb.id); if(page) dirtyPgs.add(page.id); save(); } if($('#pages').classList.contains('open')) refreshThumb(pi); }
 
 /* ============================ 포인터 입력 ============================ */
 const pointers=new Map();
@@ -1836,7 +1861,7 @@ function refreshThumb(k){
 function delPage(k){
   if(nb.pages.length<=1){ toast('마지막 페이지는 삭제할 수 없어요'); return; }
   if(!confirm(`${k+1}쪽을 삭제할까요?`)) return;
-  const rp=nb.pages[k]; if(rp.bgId&&idb) idbDel('bgs',rp.bgId).catch(()=>{}); bgImgs.delete(rp.id);
+  const rp=nb.pages[k]; if(idb){ if(rp.bgId) idbDel('bgs',rp.bgId).catch(()=>{}); idbDel('pgs',rp.id).catch(()=>{}); } bgImgs.delete(rp.id);
   nb.pages.splice(k,1); if(pi>=nb.pages.length)pi=nb.pages.length-1;
   page=nb.pages[pi]; buildPageList(); refreshPageUI(); scheduleRender(); markDirty();
 }
@@ -1988,7 +2013,7 @@ async function importPDF(file){
                cover:COVERS[db.notebooks.length%COVERS.length],
                template:'blank', paper:'white', created:Date.now(), updated:Date.now(), pages};
   db.notebooks.unshift(nbNew);
-  if(idb){ dirtyNbs.add(nbNew.id); saveNow(); }
+  if(idb){ dirtyNbs.add(nbNew.id); nbNew.pages.forEach(p=>dirtyPgs.add(p.id)); saveNow(); }
   else{
     // localStorage 폴백: 안 들어가면 되돌리고 알림
     try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
