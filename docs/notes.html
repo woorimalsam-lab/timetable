@@ -431,14 +431,43 @@ const TEMPLATE_DESC = {blank:'자유롭게',lined:'필기 기본',narrow:'촘촘
 const COVERS = ['#0a84ff','#5e5ce6','#34c759','#ff9500','#ff3b30','#ff2d95','#20262e','#8b5a2b'];
 
 /* ============================ 저장소 ============================ */
+// 노트는 IndexedDB(수백 MB 이상)에 저장. 과거 localStorage(약 5MB) 데이터는 최초 1회 자동 이전.
+// PDF 배경 이미지는 'bgs' 저장소에 페이지별 Blob으로 분리 → 노트 본문 JSON은 작게 유지.
 const DB_KEY='ssamnote_db_v2';
-let db = load();
+let db = load();                 // 부팅 직후엔 localStorage(있다면)로 시작, initStorage()가 IDB로 교체
+let idb=null;
 function load(){
   try{ const d=JSON.parse(localStorage.getItem(DB_KEY)); if(d&&d.notebooks) return d; }catch(e){}
   return {notebooks:[], theme:null};
 }
+function idbOpen(){ return new Promise((res,rej)=>{
+  const r=indexedDB.open('ssamnote',1);
+  r.onupgradeneeded=()=>{ const d=r.result;
+    if(!d.objectStoreNames.contains('kv'))  d.createObjectStore('kv');
+    if(!d.objectStoreNames.contains('bgs')) d.createObjectStore('bgs'); };
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); r.onblocked=()=>rej(new Error('blocked'));
+});}
+function idbPut(st,key,val){ return new Promise((res,rej)=>{ const t=idb.transaction(st,'readwrite'); t.objectStore(st).put(val,key); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
+function idbGet(st,key){ return new Promise((res,rej)=>{ const q=idb.transaction(st,'readonly').objectStore(st).get(key); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }
+function idbDel(st,key){ return new Promise((res,rej)=>{ const t=idb.transaction(st,'readwrite'); t.objectStore(st).delete(key); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
+async function initStorage(){
+  try{ idb=await idbOpen(); }catch(e){ idb=null; return; }   // IDB 불가 시 localStorage로 계속
+  navigator.storage?.persist?.().catch(()=>{});               // 브라우저의 임의 삭제 방지 요청
+  let d=null;
+  try{ const raw=await idbGet('kv','db'); if(raw) d=(typeof raw==='string')?JSON.parse(raw):raw; }catch(e){}
+  if(d && d.notebooks){ db=d; return; }
+  // 최초 1회 이전: PDF 배경 dataURL은 Blob으로 분리 저장
+  for(const n of db.notebooks) for(const p of n.pages){
+    if(p.bg){ try{ const bl=await (await fetch(p.bg)).blob(); await idbPut('bgs',p.id,bl); p.bgId=p.id; delete p.bg; }catch(e){} }
+  }
+  try{ await idbPut('kv','db', JSON.stringify(db)); localStorage.removeItem(DB_KEY); }catch(e){}
+}
 let saveTimer=null;
-function _writeDB(){ try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){ toast('저장 공간이 부족합니다'); } }
+function _writeDB(){
+  const json=JSON.stringify(db);
+  if(idb){ idbPut('kv','db',json).catch(()=>toast('저장 실패 — 기기 저장 공간을 확인해 주세요')); }
+  else { try{ localStorage.setItem(DB_KEY,json); }catch(e){ toast('저장 공간이 부족합니다'); } }
+}
 // localStorage 쓰기는 동기(메인 스레드 차단)라서 필기 도중/직후에 실행되면 다음 획 시작이 늦어짐.
 // iOS Safari는 requestIdleCallback이 없으므로, 펜이 완전히 쉴 때(획 없음 + 마지막 필기 후 1.2초)까지 쓰기를 미룬다.
 function _idleWrite(){
@@ -466,16 +495,22 @@ function newNotebook(opt){
   db.notebooks.unshift(nb); saveNow(); return nb;
 }
 const PAPERS={white:'흰색', cream:'크림', gray:'연회색'};
-/* PDF 배경 이미지 (페이지에 bg가 있으면 템플릿 대신 그림) */
+/* PDF 배경 이미지 (페이지에 bg/bgId가 있으면 템플릿 대신 그림) */
 const bgImgs=new Map();   // pageId -> Image
-function drawPageBg(c,pg){
-  if(!pg.bg) return false;
+function loadBgImage(pg){
+  if(!pg.bg && !pg.bgId) return null;
   let im=bgImgs.get(pg.id);
   if(!im){
-    im=new Image();
+    im=new Image(); bgImgs.set(pg.id,im);
     im.onload=()=>{ staticValid=false; scheduleRender(); if($('#pages').classList.contains('open')) buildPageList(); };
-    im.src=pg.bg; bgImgs.set(pg.id,im);
+    if(pg.bg) im.src=pg.bg;                                    // 구버전: dataURL 직접 보관
+    else if(idb) idbGet('bgs',pg.bgId).then(bl=>{ if(bl) im.src=URL.createObjectURL(bl); }).catch(()=>{});
   }
+  return im;
+}
+function drawPageBg(c,pg){
+  const im=loadBgImage(pg);
+  if(!im) return false;
   if(!(im.complete&&im.naturalWidth)) return true;   // 로딩 중 — 잠시 빈 종이
   const s=Math.min(PAGE_W/im.naturalWidth, PAGE_H/im.naturalHeight);
   const w=im.naturalWidth*s, h=im.naturalHeight*s;
@@ -514,6 +549,11 @@ function renderLibrary(){
   const head=el('div','shelf-head');
   head.innerHTML=`<div><h2>서재</h2><div class="sub">${db.notebooks.length}권의 노트 · 이 기기에 저장됩니다</div></div>`;
   wrap.appendChild(head);
+  navigator.storage?.estimate?.().then(e=>{
+    if(!e||!e.usage) return;
+    const mb=v=> v>=1e9 ? (v/1e9).toFixed(1)+'GB' : Math.max(1,Math.round(v/1e6))+'MB';
+    const s=head.querySelector('.sub'); if(s) s.textContent += ` · 저장공간 ${mb(e.usage)} / ${mb(e.quota)}`;
+  });
   const grid=el('div','grid');
 
   const addCard=el('div','card');
@@ -548,7 +588,9 @@ function renderLibrary(){
 function bookMenu(n){
   const what=prompt(`"${n.title}"\n\n1: 이름 변경\n2: 삭제\n\n번호 입력`,'1');
   if(what==='1'){ const t=prompt('노트 제목',n.title); if(t!=null){ n.title=t.trim()||'제목 없음'; n.updated=Date.now(); saveNow(); renderLibrary(); } }
-  else if(what==='2'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){ db.notebooks=db.notebooks.filter(x=>x.id!==n.id); saveNow(); renderLibrary(); } }
+  else if(what==='2'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){
+    n.pages.forEach(p=>{ if(p.bgId&&idb) idbDel('bgs',p.bgId).catch(()=>{}); bgImgs.delete(p.id); });
+    db.notebooks=db.notebooks.filter(x=>x.id!==n.id); saveNow(); renderLibrary(); } }
 }
 
 /* ---------- 새 노트 만들기: 노트 유형 + 표지 선택 ---------- */
@@ -606,6 +648,7 @@ let openTabs = Array.isArray(db.openTabs)? db.openTabs.slice() : [];
 function open(n){
   commitText();
   nb=n; pi=0; page=nb.pages[0];
+  n.pages.forEach(loadBgImage);   // PDF 배경 미리 불러오기(썸네일·내보내기 대비)
   if(!openTabs.includes(n.id)) openTabs.push(n.id);
   db.openTabs=openTabs; save();
   $('#library').classList.add('hidden'); $('#libbar').classList.add('hidden');
@@ -1640,6 +1683,7 @@ function refreshThumb(k){
 function delPage(k){
   if(nb.pages.length<=1){ toast('마지막 페이지는 삭제할 수 없어요'); return; }
   if(!confirm(`${k+1}쪽을 삭제할까요?`)) return;
+  const rp=nb.pages[k]; if(rp.bgId&&idb) idbDel('bgs',rp.bgId).catch(()=>{}); bgImgs.delete(rp.id);
   nb.pages.splice(k,1); if(pi>=nb.pages.length)pi=nb.pages.length-1;
   page=nb.pages[pi]; buildPageList(); refreshPageUI(); scheduleRender(); markDirty();
 }
@@ -1755,7 +1799,8 @@ async function loadPdfjs(){
   _pdfjs.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.mjs';
   return _pdfjs;
 }
-const PDF_MAX_PAGES=30;   // localStorage 용량(약 5MB) 보호
+const PDF_MAX_PAGES=200;      // IndexedDB 사용 시 (배경은 쪽당 Blob으로 저장)
+const PDF_MAX_PAGES_LS=30;    // localStorage 폴백 시 (약 5MB 보호)
 async function importPDF(file){
   toast('PDF 여는 중…');
   let doc;
@@ -1763,29 +1808,40 @@ async function importPDF(file){
     const pdfjs=await loadPdfjs();
     doc=await pdfjs.getDocument({data:await file.arrayBuffer()}).promise;
   }catch(e){ toast('PDF를 열 수 없어요'); return; }
-  const n=Math.min(doc.numPages, PDF_MAX_PAGES);
+  const cap = idb ? PDF_MAX_PAGES : PDF_MAX_PAGES_LS;
+  const n=Math.min(doc.numPages, cap);
   const pages=[];
-  for(let i=1;i<=n;i++){
-    toast(`PDF 변환 중… ${i}/${n}쪽`);
-    const pg=await doc.getPage(i);
-    const vp1=pg.getViewport({scale:1});
-    const scale=Math.min(PAGE_W/vp1.width, PAGE_H/vp1.height);
-    const vp=pg.getViewport({scale});
-    const cv=el('canvas'); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height);
-    const cx=cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cv.width,cv.height);
-    await pg.render({canvasContext:cx, viewport:vp}).promise;
-    const p=newPage('blank','white'); p.bg=cv.toDataURL('image/jpeg',0.75);
-    pages.push(p);
+  try{
+    for(let i=1;i<=n;i++){
+      toast(`PDF 변환 중… ${i}/${n}쪽`);
+      const pg=await doc.getPage(i);
+      const vp1=pg.getViewport({scale:1});
+      const scale=Math.min(PAGE_W/vp1.width, PAGE_H/vp1.height);
+      const vp=pg.getViewport({scale});
+      const cv=el('canvas'); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height);
+      const cx=cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cv.width,cv.height);
+      await pg.render({canvasContext:cx, viewport:vp}).promise;
+      const p=newPage('blank','white');
+      if(idb){ const bl=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.8)); if(!bl) throw new Error('toBlob'); await idbPut('bgs',p.id,bl); p.bgId=p.id; }
+      else p.bg=cv.toDataURL('image/jpeg',0.75);
+      pages.push(p);
+    }
+  }catch(e){
+    if(idb) for(const p of pages) if(p.bgId) idbDel('bgs',p.bgId).catch(()=>{});
+    toast('PDF 변환 중 오류가 발생했어요 (기기 저장 공간을 확인해 주세요)'); return;
   }
   if(!pages.length){ toast('가져올 페이지가 없어요'); return; }
   const nbNew={id:uid(), title:(file.name||'PDF').replace(/\.pdf$/i,''),
                cover:COVERS[db.notebooks.length%COVERS.length],
                template:'blank', paper:'white', created:Date.now(), updated:Date.now(), pages};
   db.notebooks.unshift(nbNew);
-  // 저장 공간 확인 — 안 들어가면 되돌리고 알림
-  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
-  catch(e){ db.notebooks=db.notebooks.filter(x=>x!==nbNew); toast('PDF가 너무 커서 저장할 수 없어요 (쪽수가 적은 PDF로 시도해 보세요)'); return; }
-  if(doc.numPages>PDF_MAX_PAGES) toast(`용량 제한으로 처음 ${PDF_MAX_PAGES}쪽만 가져왔어요`);
+  if(idb){ saveNow(); }
+  else{
+    // localStorage 폴백: 안 들어가면 되돌리고 알림
+    try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+    catch(e){ db.notebooks=db.notebooks.filter(x=>x!==nbNew); toast('PDF가 너무 커서 저장할 수 없어요 (쪽수가 적은 PDF로 시도해 보세요)'); return; }
+  }
+  if(doc.numPages>cap) toast(`처음 ${cap}쪽만 가져왔어요 (${doc.numPages}쪽 중)`);
   renderLibrary(); open(nbNew);
 }
 $('#pdfFile').addEventListener('change',e=>{
@@ -1832,7 +1888,13 @@ addEventListener('resize',()=>{ if(!$('#editor').classList.contains('hidden')){ 
 addEventListener('beforeunload',saveNow);
 
 /* ============================ 시작 ============================ */
-renderLibrary();
+// IndexedDB에서 노트를 불러온 뒤 서재 표시 (db 객체가 교체되므로 설정도 다시 적용)
+initStorage().catch(()=>{}).then(()=>{
+  applyTheme(db.theme || (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'));
+  fingerDraw = db.fingerDraw===true;
+  openTabs = Array.isArray(db.openTabs)? db.openTabs.slice() : [];
+  renderLibrary();
+});
 
 /* ============================ 앱 설치(PWA) — 오프라인 실행 ============================ */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
