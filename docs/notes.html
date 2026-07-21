@@ -115,6 +115,17 @@
         background:rgba(15,20,30,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:background .15s}
   .card .more:hover{background:rgba(15,20,30,.45)}
   .card.dragging{opacity:.35}
+  /* 폴더 카드 */
+  .fcover{aspect-ratio:3/4;border-radius:14px;position:relative;display:flex;align-items:center;justify-content:center;
+          background:linear-gradient(150deg,#a89bf5,#8f7bf7 55%,#7c68e6);color:#fff;box-shadow:var(--shadow);
+          transition:transform .18s cubic-bezier(.2,.8,.3,1),box-shadow .18s}
+  .card.folder:hover .fcover{transform:translateY(-4px) scale(1.015);box-shadow:0 2px 4px rgba(23,32,53,.08), 0 18px 40px rgba(23,32,53,.20)}
+  .fcover svg{width:46%;height:46%;filter:drop-shadow(0 4px 10px rgba(60,30,110,.25))}
+  .fcover .fcnt{position:absolute;bottom:13px;right:14px;background:rgba(255,255,255,.24);border-radius:999px;
+          padding:2px 10px;font-size:12px;font-weight:700}
+  .card.folder.fhover .fcover{outline:3px solid #fff;box-shadow:0 0 0 6px rgba(143,123,247,.5);transform:scale(1.05)}
+  .fback{width:38px;height:38px;border-radius:11px;font-size:24px;color:var(--ink);background:var(--panel);
+         box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:center;flex:0 0 auto;padding-bottom:3px}
   .dragghost{position:fixed;z-index:300;pointer-events:none;margin:0;
         filter:drop-shadow(0 14px 28px rgba(0,0,0,.35))}
   .dragghost .more{display:none}
@@ -607,6 +618,8 @@ function newNotebook(opt){
   const tpl=opt.template||'lined', paper=opt.paper||'cream';
   const nb={id:uid(), title:opt.title||'새 노트', cover:opt.cover||COVERS[db.notebooks.length%COVERS.length],
             template:tpl, paper, created:Date.now(), updated:Date.now(), pages:[newPage(tpl,paper)]};
+  const fol=(opt.folder!==undefined)?opt.folder:(typeof curFolder!=='undefined'?curFolder:null);
+  if(fol) nb.folder=fol;   // 폴더 안에서 만들면 그 폴더로
   db.notebooks.unshift(nb); dirtyNbs.add(nb.id); nb.pages.forEach(p=>dirtyPgs.add(p.id)); saveNow(); return nb;
 }
 const PAPERS={white:'흰색', cream:'크림', gray:'연회색'};
@@ -659,12 +672,22 @@ applyTheme(db.theme || (matchMedia('(prefers-color-scheme:dark)').matches?'dark'
 $('#themeBtn').onclick=()=>{ applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'); save(); scheduleRender(); };
 
 /* ============================ 서재(라이브러리) ============================ */
+let curFolder=null;   // 현재 열린 폴더 id (null=서재 루트)
 function renderLibrary(){
+  db.folders=db.folders||[];
+  if(curFolder && !db.folders.some(f=>f.id===curFolder)) curFolder=null;
+  const fld=db.folders.find(f=>f.id===curFolder)||null;
   const wrap=$('#library'); wrap.innerHTML='';
   const head=el('div','shelf-head');
-  head.innerHTML=`<div><h2>서재</h2><div class="sub">${db.notebooks.length}권의 노트 · 이 기기에 저장됩니다</div></div>`;
+  if(fld){
+    head.innerHTML=`<button class="fback" id="fback" title="서재로">‹</button>
+      <div><h2>${esc(fld.name)}</h2><div class="sub">폴더 · ${db.notebooks.filter(n=>(n.folder||null)===fld.id).length}권의 노트</div></div>`;
+  }else{
+    head.innerHTML=`<div><h2>서재</h2><div class="sub">${db.notebooks.length}권의 노트 · 이 기기에 저장됩니다</div></div>`;
+  }
   wrap.appendChild(head);
-  navigator.storage?.estimate?.().then(e=>{
+  if(fld){ head.querySelector('#fback').onclick=()=>{ curFolder=null; renderLibrary(); }; }
+  else navigator.storage?.estimate?.().then(e=>{
     if(!e||!e.usage) return;
     const mb=v=> v>=1e9 ? (v/1e9).toFixed(1)+'GB' : Math.max(1,Math.round(v/1e6))+'MB';
     const s=head.querySelector('.sub'); if(s) s.textContent += ` · 저장공간 ${mb(e.usage)} / ${mb(e.quota)}`;
@@ -681,7 +704,16 @@ function renderLibrary(){
   pdfCard.onclick=()=>$('#pdfFile').click();
   grid.appendChild(pdfCard);
 
+  if(!fld){
+    const fnew=el('div','card');
+    fnew.innerHTML=`<div class="cover new"><div class="plus">📁</div><div>새 폴더</div></div><div class="cap">폴더 만들기</div>`;
+    fnew.onclick=()=>{ const nm=prompt('폴더 이름','새 폴더'); if(nm&&nm.trim()){ db.folders.push({id:uid(),name:nm.trim()}); saveNow(); renderLibrary(); } };
+    grid.appendChild(fnew);
+    for(const f of db.folders) grid.appendChild(folderCard(f));
+  }
+
   for(const n of db.notebooks){
+    if((n.folder||null)!==curFolder) continue;   // 현재 위치(서재/폴더)의 노트만
     const card=el('div','card'); card.dataset.nid=n.id;
     const d=new Date(n.updated);
     const dd=`${d.getMonth()+1}/${d.getDate()}`;
@@ -695,10 +727,86 @@ function renderLibrary(){
     more.onclick=e=>{ e.stopPropagation(); bookMenu(n); };
     card.querySelector('.cover').onclick=()=>open(n);
     card.querySelector('.cap').onclick=()=>open(n);
-    attachCardDrag(card,n);   // 길게 눌러 들어서 순서 이동, 그대로 떼면 메뉴
+    attachCardDrag(card,n);   // 길게 눌러 들어서 순서 이동/폴더에 드롭, 그대로 떼면 메뉴
     grid.appendChild(card);
   }
   wrap.appendChild(grid);
+}
+/* ---------- 폴더 ---------- */
+function folderCard(f){
+  const cnt=db.notebooks.filter(n=>n.folder===f.id).length;
+  const card=el('div','card folder'); card.dataset.fid=f.id;
+  card.innerHTML=`
+    <div class="fcover">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M3.5 7.2v11.2a1.8 1.8 0 0 0 1.8 1.8h13.4a1.8 1.8 0 0 0 1.8-1.8V9.4a1.8 1.8 0 0 0-1.8-1.8H12L10.1 5.5a1.8 1.8 0 0 0-1.3-.6H5.3a1.8 1.8 0 0 0-1.8 1.8z"/>
+      </svg>
+      <div class="fcnt">${cnt}권</div>
+    </div>
+    <div class="cap">${esc(f.name)}<small>폴더</small></div>`;
+  const enter=()=>{ curFolder=f.id; renderLibrary(); };
+  card.querySelector('.fcover').onclick=enter;
+  card.querySelector('.cap').onclick=enter;
+  const more=el('button','more'); more.textContent='⋯'; more.title='폴더 메뉴'; card.appendChild(more);
+  more.onclick=e=>{ e.stopPropagation(); folderMenu(f); };
+  return card;
+}
+function folderMenu(f){
+  $('#menu')?.remove(); $('#backdrop')?.remove();
+  const bd=el('div','backdrop'); bd.id='backdrop';
+  bd.style.cssText='position:fixed;inset:0;z-index:140;background:rgba(10,15,25,.35)';
+  document.body.appendChild(bd);
+  const m=el('div','menu'); m.id='menu';
+  m.style.cssText='position:fixed;left:50%;top:50%;right:auto;transform:translate(-50%,-50%);z-index:150';
+  m.innerHTML=`
+    <div style="padding:10px 14px 8px;font-weight:800;font-size:15px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📁 ${esc(f.name)}</div>
+    <div class="div"></div>
+    <button data-a="rn"><span class="ic">✏️</span> 이름 변경</button>
+    <div class="div"></div>
+    <button data-a="del" class="danger"><span class="ic">🗑️</span> 폴더 삭제</button>`;
+  document.body.appendChild(m);
+  const close=()=>{ m.remove(); bd.remove(); };
+  bd.onclick=close;
+  m.onclick=e=>{
+    const a=e.target.closest('button')?.dataset.a; if(!a) return; close();
+    if(a==='rn'){ const t=prompt('폴더 이름',f.name); if(t!=null&&t.trim()){ f.name=t.trim(); saveNow(); renderLibrary(); } }
+    else if(a==='del'){ if(confirm(`"${f.name}" 폴더를 삭제할까요?\n폴더 안의 노트는 서재로 이동합니다.`)){
+      db.notebooks.forEach(n=>{ if(n.folder===f.id){ delete n.folder; dirtyNbs.add(n.id); } });
+      db.folders=db.folders.filter(x=>x.id!==f.id);
+      if(curFolder===f.id) curFolder=null;
+      saveNow(); renderLibrary(); } }
+  };
+}
+function folderPickMenu(n){   // 노트를 폴더로 이동
+  $('#menu')?.remove(); $('#backdrop')?.remove();
+  const bd=el('div','backdrop'); bd.id='backdrop';
+  bd.style.cssText='position:fixed;inset:0;z-index:140;background:rgba(10,15,25,.35)';
+  document.body.appendChild(bd);
+  const m=el('div','menu'); m.id='menu';
+  m.style.cssText='position:fixed;left:50%;top:50%;right:auto;transform:translate(-50%,-50%);z-index:150;max-height:70vh;overflow:auto';
+  const cur=n.folder||null;
+  m.innerHTML=`
+    <div style="padding:10px 14px 8px;font-weight:800;font-size:15px">폴더로 이동</div>
+    <div class="div"></div>
+    <button data-f=""><span class="ic">🏠</span> 서재 (폴더 없음)${cur===null?' ✓':''}</button>
+    ${(db.folders||[]).map(f=>`<button data-f="${f.id}"><span class="ic">📁</span> ${esc(f.name)}${cur===f.id?' ✓':''}</button>`).join('')}
+    <div class="div"></div>
+    <button data-a="new"><span class="ic">＋</span> 새 폴더 만들어 이동</button>`;
+  document.body.appendChild(m);
+  const close=()=>{ m.remove(); bd.remove(); };
+  bd.onclick=close;
+  m.onclick=e=>{
+    const b=e.target.closest('button'); if(!b) return; close();
+    if(b.dataset.a==='new'){
+      const nm=prompt('폴더 이름','새 폴더');
+      if(nm&&nm.trim()){ const f={id:uid(),name:nm.trim()}; (db.folders=db.folders||[]).push(f);
+        n.folder=f.id; dirtyNbs.add(n.id); saveNow(); renderLibrary(); toast('이동했어요'); }
+      return;
+    }
+    if(b.dataset.f===undefined) return;
+    if(b.dataset.f) n.folder=b.dataset.f; else delete n.folder;
+    dirtyNbs.add(n.id); saveNow(); renderLibrary(); toast('이동했어요');
+  };
 }
 
 /* ---------- 서재: 길게 눌러 드래그로 순서 이동 ---------- */
@@ -729,7 +837,13 @@ addEventListener('pointermove',e=>{
   if(!d.lifted){ if(Math.hypot(dx,dy)>10){ d.moved=true; clearTimeout(d.timer); } return; }
   if(Math.hypot(dx,dy)>8) d.movedAfterLift=true;
   d.ghost.style.transform=`translate(${dx}px,${dy}px) scale(1.04)`;
-  const t=document.elementFromPoint(e.clientX,e.clientY)?.closest('.card[data-nid]');
+  const under=document.elementFromPoint(e.clientX,e.clientY);
+  // 폴더 카드 위: 드롭 대상 표시
+  const ft=under?.closest('.card.folder');
+  document.querySelectorAll('.card.folder.fhover').forEach(c=>{ if(c!==ft) c.classList.remove('fhover'); });
+  if(ft){ ft.classList.add('fhover'); d.overFolder=ft.dataset.fid; return; }
+  d.overFolder=null;
+  const t=under?.closest('.card[data-nid]');
   if(t&&t!==d.card){
     const r=t.getBoundingClientRect();
     t.parentNode.insertBefore(d.card, (e.clientX < r.left+r.width/2)?t:t.nextSibling);
@@ -741,9 +855,13 @@ function cardDragEnd(e){
   if(!d.lifted) return;                        // 그냥 탭/스크롤이었음
   d.ghost.remove(); d.card.classList.remove('dragging');
   if(e.type!=='pointercancel' && d.movedAfterLift){
-    const order=[...document.querySelectorAll('#library .card[data-nid]')].map(c=>c.dataset.nid);
-    db.notebooks.sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
-    saveNow();
+    if(d.overFolder){                              // 폴더 카드 위에서 놓음 → 그 폴더로 이동
+      d.n.folder=d.overFolder; dirtyNbs.add(d.n.id); saveNow(); toast('폴더로 이동했어요');
+    }else{
+      const order=[...document.querySelectorAll('#library .card[data-nid]')].map(c=>c.dataset.nid);
+      db.notebooks.sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));
+      saveNow();
+    }
   } else if(e.type!=='pointercancel'){ bookMenu(d.n); }   // 들었다가 그대로 떼면 메뉴
   renderLibrary();
 }
@@ -761,6 +879,7 @@ function bookMenu(n){
     <div class="div"></div>
     <button data-a="rn"><span class="ic">✏️</span> 이름 변경</button>
     <button data-a="dup"><span class="ic">📑</span> 복제</button>
+    <button data-a="mv"><span class="ic">📁</span> 폴더로 이동</button>
     <div class="div"></div>
     <button data-a="del" class="danger"><span class="ic">🗑️</span> 삭제</button>`;
   document.body.appendChild(m);
@@ -771,6 +890,7 @@ function bookMenu(n){
     close();
     if(a==='rn'){ const t=prompt('노트 제목',n.title); if(t!=null){ n.title=t.trim()||'제목 없음'; n.updated=Date.now(); dirtyNbs.add(n.id); saveNow(); renderLibrary(); } }
     else if(a==='dup'){ await duplicateNotebook(n); }
+    else if(a==='mv'){ folderPickMenu(n); }
     else if(a==='del'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){
       n.pages.forEach(p=>{ if(idb){ if(p.bgId) idbDel('bgs',p.bgId).catch(()=>{}); idbDel('pgs',p.id).catch(()=>{}); } bgImgs.delete(p.id); });
       db.notebooks=db.notebooks.filter(x=>x.id!==n.id); dirtyNbs.add(n.id); saveNow(); renderLibrary(); } }
@@ -2287,6 +2407,7 @@ async function importPDF(file){
   const nbNew={id:uid(), title:(file.name||'PDF').replace(/\.pdf$/i,''),
                cover:COVERS[db.notebooks.length%COVERS.length],
                template:'blank', paper:'white', created:Date.now(), updated:Date.now(), pages};
+  if(curFolder) nbNew.folder=curFolder;
   db.notebooks.unshift(nbNew);
   if(idb){ dirtyNbs.add(nbNew.id); nbNew.pages.forEach(p=>dirtyPgs.add(p.id)); saveNow(); }
   else{
