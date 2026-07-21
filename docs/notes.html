@@ -105,6 +105,12 @@
   .cover.new:hover{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 4%,var(--panel))}
   .cover.new::after{display:none}
   .cover.new .plus{font-size:32px;line-height:1}
+  /* PDF 노트 표지: 첫 페이지 미리보기 */
+  .cover.pdf{background:#fff;border:1px solid var(--line)}
+  .cover.pdf canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top}
+  .cover.pdf .pdfbadge{position:absolute;left:9px;bottom:9px;z-index:2;background:rgba(15,20,30,.55);color:#fff;
+        font-size:10.5px;font-weight:800;letter-spacing:.4px;padding:2px 8px;border-radius:6px;
+        backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
   .card .cap{margin-top:9px;font-size:13px;font-weight:600;text-align:center;color:var(--ink);
              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
   .card .cap small{display:block;color:var(--muted);font-weight:400;font-size:11px;margin-top:1px}
@@ -494,7 +500,7 @@ const TEMPLATE_KO = {blank:'무지',lined:'줄노트',narrow:'좁은 줄',grid:'
                      daily:'데일리 플래너',weekly:'위클리 플래너',monthly:'먼슬리 플래너',habit:'습관 트래커',timetable:'시간표',lesson:'수업 계획'};
 const TEMPLATE_DESC = {blank:'자유롭게',lined:'필기 기본',narrow:'촘촘한 줄',grid:'그래프·표',dots:'도트 그리드',cornell:'코넬 노트',todo:'할 일 목록',
                        daily:'하루 계획+할 일',weekly:'주간 한눈에',monthly:'달력형 계획',habit:'습관 체크 31일',timetable:'요일×교시',lesson:'교사용 수업안'};
-const COVERS = ['#0a84ff','#5e5ce6','#34c759','#ff9500','#ff3b30','#ff2d95','#20262e','#8b5a2b'];
+const COVERS = ['#7b6cf0','#f48fb1','#4fc3f7','#4dd0a6','#ffb74d','#f2708a','#64a5f6','#b388f0'];   // 새 노트마다 번갈아 적용
 
 /* ============================ 저장소 ============================ */
 // 노트는 IndexedDB(수백 MB 이상)에 저장. 과거 localStorage(약 5MB) 데이터는 최초 1회 자동 이전.
@@ -630,7 +636,8 @@ function loadBgImage(pg){
   let im=bgImgs.get(pg.id);
   if(!im){
     im=new Image(); bgImgs.set(pg.id,im);
-    im.onload=()=>{ staticValid=false; scheduleRender(); if($('#pages').classList.contains('open')) buildPageList(); };
+    im.onload=()=>{ staticValid=false; scheduleRender(); if($('#pages').classList.contains('open')) buildPageList();
+      dispatchEvent(new CustomEvent('bgloaded',{detail:pg.id})); };   // 서재 PDF 표지 갱신용
     if(pg.bg) im.src=pg.bg;                                    // 구버전: dataURL 직접 보관
     else if(idb) idbGet('bgs',pg.bgId).then(bl=>{ if(bl) im.src=URL.createObjectURL(bl); }).catch(()=>{});
   }
@@ -717,12 +724,30 @@ function renderLibrary(){
     const card=el('div','card'); card.dataset.nid=n.id;
     const d=new Date(n.updated);
     const dd=`${d.getMonth()+1}/${d.getDate()}`;
-    card.innerHTML=`
-      <div class="cover" style="background:linear-gradient(160deg,${shade(n.cover,18)},${n.cover})">
-        <div class="spine"></div>
-        <div class="ct"><div class="t">${esc(n.title)}</div><div class="m">${n.pages.length}쪽 · ${dd}</div></div>
-      </div>
-      <div class="cap">${esc(n.title)}<small>${n.pages.length}쪽</small></div>`;
+    const pg0=n.pages[0], isPdf=!!(pg0&&(pg0.bg||pg0.bgId));
+    if(isPdf){
+      // PDF 노트: 표지에 첫 페이지를 그대로 보여줌
+      card.innerHTML=`
+        <div class="cover pdf"><span class="pdfbadge">PDF</span></div>
+        <div class="cap">${esc(n.title)}<small>${n.pages.length}쪽</small></div>`;
+      const cover=card.querySelector('.cover');
+      const cv=el('canvas'); cv.width=300; cv.height=Math.round(300*PAGE_H/PAGE_W);
+      cover.insertBefore(cv,cover.firstChild);
+      const draw=()=>renderThumb(pg0,cv);
+      draw();
+      const im=loadBgImage(pg0);
+      if(im && !(im.complete&&im.naturalWidth)){
+        const h=ev=>{ if(ev.detail===pg0.id){ draw(); removeEventListener('bgloaded',h); } };
+        addEventListener('bgloaded',h);
+      }
+    }else{
+      card.innerHTML=`
+        <div class="cover" style="background:linear-gradient(160deg,${shade(n.cover,18)},${n.cover})">
+          <div class="spine"></div>
+          <div class="ct"><div class="t">${esc(n.title)}</div><div class="m">${n.pages.length}쪽 · ${dd}</div></div>
+        </div>
+        <div class="cap">${esc(n.title)}<small>${n.pages.length}쪽</small></div>`;
+    }
     const more=el('button','more'); more.textContent='⋯'; more.title='노트 메뉴'; card.appendChild(more);
     more.onclick=e=>{ e.stopPropagation(); bookMenu(n); };
     card.querySelector('.cover').onclick=()=>open(n);
