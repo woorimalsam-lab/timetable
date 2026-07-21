@@ -1274,8 +1274,8 @@ function preemptActive(){
 }
 function onDown(e){
   const l=localXY(e); l.type=e.pointerType;
-  // 손바닥(큰 접촉면)은 언제나 무시 — 획 사이에 손이 닿아도 화면이 밀리지 않게
-  if(e.pointerType==='touch' && Math.max(e.width||0,e.height||0) > 50) return;
+  // 손바닥(아주 큰 접촉면)은 언제나 무시 — iOS는 일반 손가락도 40~60px로 보고하므로 90px 초과만 손바닥으로 판정
+  if(e.pointerType==='touch' && Math.max(e.width||0,e.height||0) > 90) return;
   // 펜이 닿아 있는 동안(획 그리는 중 포함)의 손 터치는 전부 무시
   if(e.pointerType==='touch' && (penDown || (active && pointers.get(activePid)?.type==='pen'))) return;
 
