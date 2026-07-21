@@ -1248,7 +1248,7 @@ function localXY(e){ const r=board.getBoundingClientRect(); return {x:e.clientX-
 // 손가락(또는 pan 도구)은 '이동/확대' 담당인지 판정
 function wantsNav(e){
   if(tool==='pan') return true;
-  if(e.pointerType==='touch') return penDown || !fingerDraw;
+  if(e.pointerType==='touch') return penContact() || !fingerDraw;
   return false;   // 펜/마우스(그리기 도구)는 그리기
 }
 // 시스템 제스처(pointercancel)로 강제로 끊긴 획 — 짧은 시간 내 펜을 다시 대면 이어서 그림
@@ -1274,10 +1274,13 @@ function preemptActive(){
 }
 function onDown(e){
   const l=localXY(e); l.type=e.pointerType;
-  // 손바닥(아주 큰 접촉면)은 언제나 무시 — iOS는 일반 손가락도 40~60px로 보고하므로 90px 초과만 손바닥으로 판정
-  if(e.pointerType==='touch' && Math.max(e.width||0,e.height||0) > 90) return;
-  // 펜이 닿아 있는 동안(획 그리는 중 포함)의 손 터치는 전부 무시
-  if(e.pointerType==='touch' && (penDown || (active && pointers.get(activePid)?.type==='pen'))) return;
+  // 펜이 닿아 있는 동안(획 그리는 중 포함)의 손 터치는 전부 무시 — 손바닥 방어
+  // (접촉 크기 기반 판정은 iOS 보고값이 기기·누름에 따라 제각각이라 사용하지 않음)
+  if(e.pointerType==='touch'){
+    if(penContact()) return;
+    // 펜 업 유실로 남은 옛 획이 있으면 정리하고 손 터치를 정상 처리(이동/확대 먹통 방지)
+    if(active && pointers.get(activePid)?.type==='pen') preemptActive();
+  }
 
   // 손가락으로 그리던 중 '또 다른' 손가락이 닿으면 두 손가락 확대로 전환
   if(e.pointerType==='touch' && activePid!=null && pointers.get(activePid)?.type==='touch'){
@@ -1286,7 +1289,7 @@ function onDown(e){
     navDown(fid,fpos); pointers.set(e.pointerId,l); navDown(e.pointerId,l);
     return;
   }
-  if(e.pointerType==='pen'){ penDown=true; penSeen=true; }
+  if(e.pointerType==='pen'){ penDown=true; penSeen=true; penLastT=(typeof performance!=='undefined'?performance.now():0); }
 
   pointers.set(e.pointerId,l);
   try{ board.setPointerCapture?.(e.pointerId); }catch(_){}
@@ -1334,7 +1337,10 @@ function startTool(e,l){
   else if(tool==='lasso'){ if(selection && pointInSel(p)){ selDrag={lx:l.x,ly:l.y,dx:0,dy:0}; } else { clearSelection(); lasso={pts:[l],page:[p]}; } }
   else if(tool==='text'){ const hit=hitText(p); if(hit){ selectTexts([hit]); textDragSel={lx:l.x,ly:l.y,moved:false,ox:[hit.x],oy:[hit.y]}; } else { clearTextSel(); openTextEditor(p.x,p.y,null); } }
 }
-let penSeen=false, penDown=false, _penUpT=0;
+let penSeen=false, penDown=false, _penUpT=0, penLastT=0;
+// 펜이 '실제로 닿아 있는지' — 펜 업 이벤트가 유실돼 penDown이 영구히 true로 남으면
+// 손 터치가 전부 무시되므로, 최근 10초 내 펜 이벤트가 없으면 자동으로 풀린 것으로 본다
+function penContact(){ return penDown && (typeof performance==='undefined' || performance.now()-penLastT<10000); }
 function penActiveRecently(){ return (typeof performance!=='undefined') && (performance.now()-_penUpT < 500); } // 펜 뗀 직후 잔여 손터치 차단
 /* 필압: 스타일러스는 실제 압력, 손가락/마우스는 '속도'로 굵기 흉내(느릴수록 굵게) */
 let _pLastT=0,_pLastPt=null,_pEma=0;
@@ -1360,6 +1366,7 @@ function addActivePoint(ev){
 
 function onMove(e){
   const l=localXY(e);
+  if(e.pointerType==='pen' && penDown) penLastT=(typeof performance!=='undefined'?performance.now():0);
   if(nav.has(e.pointerId)){ navMove(e.pointerId,l); return; }   // 이동/확대 손가락
   if(e.pointerId!==activePid) return;                          // 그리는 포인터만 처리
   if(pointers.has(e.pointerId)){ l.type=e.pointerType; pointers.set(e.pointerId,l); }
@@ -1461,7 +1468,7 @@ function navDown(id,l){
 }
 function navMove(id,l){
   if(!nav.has(id))return; nav.set(id,{x:l.x,y:l.y});
-  if(penDown) return;   // 펜이 닿아 있는 동안엔 화면 고정(남은 손바닥 드리프트 방지)
+  if(penContact()) return;   // 펜이 닿아 있는 동안엔 화면 고정(남은 손바닥 드리프트 방지)
   if(nav.size>=2 && navPinch){
     const v=[...nav.values()]; const [a,b]=v;
     const d=dist(a,b), cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
