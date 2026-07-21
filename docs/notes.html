@@ -478,9 +478,11 @@ const COLORS = ['#1c2530','#5b6470','#ff3b30','#ff9500','#ffcc00','#34c759',
 const PEN_SIZES = [2.2,3.6,6,9];
 const HL_SIZES  = [16,26,38];
 const ER_SIZES  = [20,40,70];
-const TEMPLATES = ['blank','lined','narrow','grid','dots','cornell','todo'];
-const TEMPLATE_KO = {blank:'무지',lined:'줄노트',narrow:'좁은 줄',grid:'모눈',dots:'점',cornell:'코넬',todo:'체크리스트'};
-const TEMPLATE_DESC = {blank:'자유롭게',lined:'필기 기본',narrow:'촘촘한 줄',grid:'그래프·표',dots:'도트 그리드',cornell:'코넬 노트',todo:'할 일 목록'};
+const TEMPLATES = ['blank','lined','narrow','grid','dots','cornell','todo','daily','weekly','monthly','habit','timetable','lesson'];
+const TEMPLATE_KO = {blank:'무지',lined:'줄노트',narrow:'좁은 줄',grid:'모눈',dots:'점',cornell:'코넬',todo:'체크리스트',
+                     daily:'데일리 플래너',weekly:'위클리 플래너',monthly:'먼슬리 플래너',habit:'습관 트래커',timetable:'시간표',lesson:'수업 계획'};
+const TEMPLATE_DESC = {blank:'자유롭게',lined:'필기 기본',narrow:'촘촘한 줄',grid:'그래프·표',dots:'도트 그리드',cornell:'코넬 노트',todo:'할 일 목록',
+                       daily:'하루 계획+할 일',weekly:'주간 한눈에',monthly:'달력형 계획',habit:'습관 체크 31일',timetable:'요일×교시',lesson:'교사용 수업안'};
 const COVERS = ['#0a84ff','#5e5ce6','#34c759','#ff9500','#ff3b30','#ff2d95','#20262e','#8b5a2b'];
 
 /* ============================ 저장소 ============================ */
@@ -1175,6 +1177,96 @@ function drawTemplate(c,tpl,paper){
     c.strokeStyle=g; c.lineWidth=1.5;
     c.beginPath();c.moveTo(300,40);c.lineTo(300,PAGE_H-160);c.stroke();
     c.beginPath();c.moveTo(40,PAGE_H-160);c.lineTo(PAGE_W-40,PAGE_H-160);c.stroke();
+  }else if(tpl==='daily'){          // 데일리 플래너: 날짜 + 시간대 + 할 일 + 메모
+    const line=(x1,y1,x2,y2,w)=>{c.lineWidth=w||1;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();};
+    c.strokeStyle=g; c.fillStyle=g; c.font='700 24px -apple-system,sans-serif';
+    c.lineWidth=1.4; c.beginPath(); c.arc(120,104,50,0,7); c.stroke();      // 날짜 원
+    line(200,84,560,84); line(200,132,560,132);                              // 날짜/요일 기입선
+    line(56,180,PAGE_W-56,180,1.6);                                          // 헤더 구분
+    c.fillText('SCHEDULE',64,226);
+    c.font='600 20px -apple-system,sans-serif';
+    const t0=234, hstep=(PAGE_H-t0-70)/15;
+    for(let i=0;i<=15;i++){ const y=t0+40+i*hstep;
+      if(i<15) c.fillText(String(7+i).padStart(2,'0'),64,y+hstep/2+8);
+      c.strokeStyle=g2; line(120,y,470,y); }
+    c.strokeStyle=g; line(500,196,500,PAGE_H-56,1.2);                        // 좌우 분할
+    c.fillStyle=g; c.font='700 24px -apple-system,sans-serif'; c.fillText('TO-DO',540,226);
+    for(let i=0;i<9;i++){ const y=270+i*58;
+      c.strokeStyle=g; c.strokeRect(540,y-22,24,24); c.strokeStyle=g2; line(584,y,PAGE_W-56,y); }
+    c.fillStyle=g; c.fillText('MEMO',540,270+9*58+30);
+    for(let i=0;i<8;i++){ const y=270+9*58+70+i*54; c.strokeStyle=g2; line(540,y,PAGE_W-56,y); }
+  }else if(tpl==='weekly'){          // 위클리 플래너: 요일 8칸
+    const days=['월','화','수','목','금','토','일','NOTE'];
+    const gx=56, gy=150, gw=PAGE_W-112, gh=PAGE_H-206, cw=gw/2, chh=gh/4;
+    c.strokeStyle=g; c.lineWidth=1.4;
+    c.beginPath(); c.moveTo(gx,96); c.lineTo(gx+420,96); c.stroke();          // 주차 기입선
+    c.strokeRect(gx,gy,gw,gh);
+    for(let i=1;i<2;i++){ c.beginPath();c.moveTo(gx+cw,gy);c.lineTo(gx+cw,gy+gh);c.stroke(); }
+    for(let r=1;r<4;r++){ c.beginPath();c.moveTo(gx,gy+r*chh);c.lineTo(gx+gw,gy+r*chh);c.stroke(); }
+    c.fillStyle=g; c.font='700 26px -apple-system,sans-serif';
+    days.forEach((d,i)=>{ const col=i%2? 1:0, row=Math.floor(i/2);
+      c.fillText(d, gx+col*cw+20, gy+row*chh+40); });
+  }else if(tpl==='monthly'){         // 먼슬리: 달력 7×6
+    const days=['일','월','화','수','목','금','토'];
+    const gx=56, gy=170, gw=PAGE_W-112, gh=PAGE_H-230, cw=gw/7, hh=56, rh=(gh-hh)/6;
+    c.strokeStyle=g; c.lineWidth=1.4;
+    c.beginPath(); c.moveTo(gx,100); c.lineTo(gx+380,100); c.stroke();        // 월 기입선
+    c.strokeRect(gx,gy,gw,gh);
+    c.beginPath(); c.moveTo(gx,gy+hh); c.lineTo(gx+gw,gy+hh); c.stroke();
+    c.font='700 24px -apple-system,sans-serif';
+    for(let i=0;i<7;i++){
+      if(i) { c.beginPath();c.moveTo(gx+i*cw,gy);c.lineTo(gx+i*cw,gy+gh);c.stroke(); }
+      c.fillStyle=g; c.fillText(days[i], gx+i*cw+cw/2-12, gy+38);
+    }
+    c.strokeStyle=g2;
+    for(let r=1;r<6;r++){ c.beginPath();c.moveTo(gx,gy+hh+r*rh);c.lineTo(gx+gw,gy+hh+r*rh);c.stroke(); }
+  }else if(tpl==='habit'){           // 습관 트래커: 습관×31일
+    const gx=56, gy=170, nameW=290, cols=31, rows=13;
+    const gw=PAGE_W-112, cw=(gw-nameW)/cols, rh=(PAGE_H-gy-90)/rows;
+    c.strokeStyle=g; c.lineWidth=1.4;
+    c.beginPath(); c.moveTo(gx,96); c.lineTo(gx+430,96); c.stroke();          // 제목 기입선
+    c.strokeRect(gx,gy,gw,rh*rows);
+    c.beginPath(); c.moveTo(gx+nameW,gy); c.lineTo(gx+nameW,gy+rh*rows); c.stroke();
+    c.fillStyle=g; c.font='700 22px -apple-system,sans-serif'; c.fillText('HABIT',gx+18,gy+rh/2+8);
+    c.font='600 14px -apple-system,sans-serif';
+    for(let i=0;i<cols;i++){ const x=gx+nameW+i*cw;
+      if(i) { c.strokeStyle=g2; c.beginPath();c.moveTo(x,gy);c.lineTo(x,gy+rh*rows);c.stroke(); }
+      c.fillText(String(i+1), x+cw/2-(i<9?4:8), gy+rh/2+6); }
+    for(let r=1;r<rows;r++){ c.strokeStyle=r===1?g:g2; c.beginPath();c.moveTo(gx,gy+r*rh);c.lineTo(gx+gw,gy+r*rh);c.stroke(); }
+  }else if(tpl==='timetable'){       // 시간표: 요일×교시
+    const days=['월','화','수','목','금'];
+    const gx=56, gy=170, gw=PAGE_W-112, gh=PAGE_H-240, pw=110, hh=64, cw=(gw-pw)/5, rh=(gh-hh)/7;
+    c.strokeStyle=g; c.lineWidth=1.4;
+    c.beginPath(); c.moveTo(gx,100); c.lineTo(gx+380,100); c.stroke();
+    c.strokeRect(gx,gy,gw,gh);
+    c.beginPath(); c.moveTo(gx,gy+hh); c.lineTo(gx+gw,gy+hh); c.stroke();
+    c.beginPath(); c.moveTo(gx+pw,gy); c.lineTo(gx+pw,gy+gh); c.stroke();
+    c.fillStyle=g; c.font='700 26px -apple-system,sans-serif';
+    days.forEach((d,i)=>{ const x=gx+pw+i*cw;
+      if(i) { c.beginPath();c.moveTo(x,gy);c.lineTo(x,gy+gh);c.stroke(); }
+      c.fillText(d, x+cw/2-13, gy+42); });
+    for(let r=0;r<7;r++){ const y=gy+hh+r*rh;
+      if(r) { c.strokeStyle=g2; c.beginPath();c.moveTo(gx,y);c.lineTo(gx+gw,y);c.stroke(); }
+      c.fillStyle=g; c.fillText(String(r+1), gx+pw/2-8, y+rh/2+10); }
+  }else if(tpl==='lesson'){          // 수업 계획(교사용)
+    const gx=56, gw=PAGE_W-112, lab=190;
+    const rowsTop=[['단원',96],['학습 목표',96]];
+    c.strokeStyle=g; c.lineWidth=1.4; c.fillStyle=g; c.font='700 24px -apple-system,sans-serif';
+    let y=80;
+    for(const [name,h] of rowsTop){
+      c.strokeRect(gx,y,gw,h);
+      c.beginPath(); c.moveTo(gx+lab,y); c.lineTo(gx+lab,y+h); c.stroke();
+      c.fillText(name, gx+24, y+h/2+9); y+=h;
+    }
+    y+=28;
+    const secs=[['도입',280],['전개',700],['정리',260],['평가·과제',200]];
+    for(const [name,h] of secs){
+      c.strokeRect(gx,y,gw,h);
+      c.fillText(name, gx+20, y+38);
+      c.strokeStyle=g2; c.lineWidth=1;
+      for(let ly=y+76;ly<y+h-16;ly+=52){ c.beginPath();c.moveTo(gx+24,ly);c.lineTo(gx+gw-24,ly);c.stroke(); }
+      c.strokeStyle=g; c.lineWidth=1.4; y+=h+24;
+    }
   }
   c.restore();
 }
@@ -2003,9 +2095,12 @@ $('#exportBtn').onclick=()=>{
   if($('#menu')){ $('#menu').remove(); $('#backdrop')?.remove(); return; }
   const bd=el('div','backdrop'); bd.id='backdrop'; bd.onclick=()=>{$('#menu')?.remove();bd.remove();}; document.body.appendChild(bd);
   const m=el('div','menu'); m.id='menu';
-  m.innerHTML=`<button data-a="png"><span class="ic">🖼️</span> 이 페이지 PNG 저장</button><button data-a="pdf"><span class="ic">📄</span> 전체 PDF로 인쇄</button>`;
+  m.innerHTML=`<button data-a="share"><span class="ic">📤</span> PDF 공유 — Drive·카톡 등</button>
+    <button data-a="png"><span class="ic">🖼️</span> 이 페이지 PNG 저장</button>
+    <button data-a="pdf"><span class="ic">🖨️</span> 전체 PDF로 인쇄</button>`;
   document.body.appendChild(m);
-  m.onclick=e=>{ const a=e.target.closest('button')?.dataset.a; m.remove();bd.remove(); if(a==='png')exportPNG(); else if(a==='pdf')exportPDF(); };
+  m.onclick=e=>{ const a=e.target.closest('button')?.dataset.a; m.remove();bd.remove();
+    if(a==='png')exportPNG(); else if(a==='pdf')exportPDF(); else if(a==='share')exportPDFFile(); };
 };
 
 function refreshPageUI(){
@@ -2210,6 +2305,49 @@ $('#pdfFile').addEventListener('change',e=>{
 function exportPNG(){
   const url=pageToCanvas(page,2).toDataURL('image/png');
   const a=el('a'); a.href=url; a.download=`${nb.title}_${pi+1}.png`; a.click(); toast('PNG 저장됨');
+}
+/* ---------- 진짜 PDF 파일 생성 (라이브러리 없이) → 공유 시트로 Drive·카카오톡 등에 저장 ---------- */
+function buildPdf(imgs, W, H){    // imgs: [{data:Uint8Array(JPEG), w, h}]
+  const enc=new TextEncoder(); const chunks=[]; let off=0; const offs=[];
+  const put=x=>{ const b=(typeof x==='string')?enc.encode(x):x; chunks.push(b); off+=b.length; };
+  put('%PDF-1.4\n');
+  const n=imgs.length, last=2+n*3;
+  offs[1]=off; put('1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n');
+  offs[2]=off; put(`2 0 obj<</Type/Pages/Kids[${imgs.map((_,i)=>`${3+i*3} 0 R`).join(' ')}]/Count ${n}>>endobj\n`);
+  imgs.forEach((im,i)=>{
+    const pn=3+i*3, cn=pn+1, xn=pn+2;
+    offs[pn]=off; put(`${pn} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${W} ${H}]/Resources<</XObject<</Im${i} ${xn} 0 R>>>>/Contents ${cn} 0 R>>endobj\n`);
+    const cs=`q ${W} 0 0 ${H} 0 0 cm /Im${i} Do Q`;
+    offs[cn]=off; put(`${cn} 0 obj<</Length ${cs.length}>>stream\n${cs}\nendstream endobj\n`);
+    offs[xn]=off; put(`${xn} 0 obj<</Type/XObject/Subtype/Image/Width ${im.w}/Height ${im.h}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${im.data.length}>>stream\n`);
+    put(im.data); put('\nendstream endobj\n');
+  });
+  const xr=off;
+  let x=`xref\n0 ${last+1}\n0000000000 65535 f \n`;
+  for(let k=1;k<=last;k++) x+=String(offs[k]).padStart(10,'0')+' 00000 n \n';
+  put(x); put(`trailer<</Size ${last+1}/Root 1 0 R>>\nstartxref\n${xr}\n%%EOF`);
+  return new Blob(chunks,{type:'application/pdf'});
+}
+function notebookPdfBlob(){
+  const imgs=nb.pages.map(pg=>{
+    const cv=pageToCanvas(pg,1.6);
+    const bin=atob(cv.toDataURL('image/jpeg',0.85).split(',')[1]);
+    const u8=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+    return {data:u8, w:cv.width, h:cv.height};
+  });
+  return buildPdf(imgs, 595.28, 841.89);   // A4
+}
+async function exportPDFFile(){
+  toast('PDF 만드는 중…');
+  const blob=notebookPdfBlob();
+  const file=new File([blob], `${nb.title}.pdf`, {type:'application/pdf'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:nb.title}); return; }
+    catch(e){ if(e && e.name==='AbortError') return; }   // 사용자가 시트 닫음
+  }
+  const a=el('a'); a.href=URL.createObjectURL(blob); a.download=`${nb.title}.pdf`; a.click();
+  toast('PDF 저장됨');
 }
 function exportPDF(){
   const imgs=nb.pages.map(pg=>pageToCanvas(pg,2).toDataURL('image/png'));
