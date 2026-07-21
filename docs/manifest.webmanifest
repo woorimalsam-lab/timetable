@@ -1,6 +1,6 @@
 {
-  "name": "쌤노트 · SsamNote",
-  "short_name": "쌤노트",
+  "name": "수연노트 · Suyeon Note",
+  "short_name": "수연노트",
   "description": "손글씨 필기 노트 (GoodNotes 스타일)",
   "start_url": "notes.html",
   "scope": "./",
