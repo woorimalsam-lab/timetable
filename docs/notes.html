@@ -5,12 +5,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="쌤노트">
+<meta name="apple-mobile-web-app-title" content="수연노트">
 <meta name="theme-color" content="#111418">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
-<title>쌤노트 · SsamNote</title>
+<title>수연노트 · Suyeon Note</title>
 <style>
   :root{
     --bg:#eef1f5; --panel:#ffffff; --panel2:#f3f5f9; --line:#e4e8ef;
@@ -74,9 +74,9 @@
             padding:6px 8px;border-radius:8px}
   .title-in:focus{background:var(--panel2)}
   .brand{font-weight:800;font-size:17px;letter-spacing:-.4px;display:flex;align-items:center;gap:9px}
-  .brand .logo{width:31px;height:31px;border-radius:9px;background:linear-gradient(135deg,#0a84ff,#5e5ce6);
+  .brand .logo{width:31px;height:31px;border-radius:9px;background:linear-gradient(140deg,#8f7bf7,#b57ef2 55%,#f79cc5);
                display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;
-               box-shadow:0 3px 8px rgba(60,90,230,.3)}
+               box-shadow:0 3px 8px rgba(150,110,235,.35)}
   .pageind{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
 
   /* ---------- 서재(라이브러리) ---------- */
@@ -374,7 +374,7 @@
 
 <!-- ===== 서재 뷰 ===== -->
 <div id="libbar" class="topbar">
-  <div class="brand"><span class="logo">✎</span><span>쌤노트</span></div>
+  <div class="brand"><span class="logo">✎</span><span>수연노트</span></div>
   <div class="grow"></div>
   <button class="install-btn hidden" id="installBtn" title="앱으로 설치">⤓ 앱 설치</button>
   <button class="tbtn" id="themeBtn" title="테마">◐</button>
@@ -386,7 +386,7 @@
 <div id="iosSheet">
   <div class="card">
     <h3>홈 화면에 앱으로 추가</h3>
-    <p>Safari에서 아래 순서대로 누르면 쌤노트가 앱처럼 전체화면으로 실행돼요. (오프라인에서도 사용 가능)</p>
+    <p>Safari에서 아래 순서대로 누르면 수연노트가 앱처럼 전체화면으로 실행돼요. (오프라인에서도 사용 가능)</p>
     <ol>
       <li><span class="num">1</span><span class="ico">􀈂</span><span>아래쪽 <b>공유</b> 버튼(⬆︎ 상자에 화살표) 누르기</span></li>
       <li><span class="num">2</span><span class="ico">＋</span><span>메뉴에서 <b>‘홈 화면에 추가’</b> 선택</span></li>
@@ -459,7 +459,7 @@
 <script>
 "use strict";
 /* =========================================================================
-   쌤노트 — GoodNotes 스타일 손글씨 노트 (단일 파일, 오프라인 동작)
+   수연노트 — GoodNotes 스타일 손글씨 노트 (단일 파일, 오프라인 동작)
    저장: localStorage / 벡터 스트로크 기반 렌더링 / 포인터(펜·터치·마우스) 지원
    ========================================================================= */
 
@@ -1013,8 +1013,75 @@ function clampView(){
 /* ============================ 렌더링 ============================ */
 // keepStatic=true 면 확정 레이어(캐시)를 재사용(그리는 중엔 전체 재렌더 안 함 → 지연 없음)
 function scheduleRender(keepStatic){ if(!keepStatic) staticValid=false; needsRender=true; }
-function loop(){ if(needsRender){ needsRender=false; render(); } requestAnimationFrame(loop); }
+function loop(){ maybeLineSnap(); if(needsRender){ needsRender=false; render(); } requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
+
+/* 그리다 멈추면 직선화 (GoodNotes식): 획을 그린 채 펜을 0.6초 유지하면
+   거의 직선인 획을 반듯한 직선으로 변환. 수평/수직은 5° 이내면 정렬, 그 외엔 기울기 유지.
+   변환 후 펜을 계속 움직이면 끝점이 따라온다. */
+let activeLastMove=0;
+function maybeLineSnap(){
+  if(!active || active._lineSnap || active._shapeSnapped) return;
+  if(!(active.tool==='pen'||active.tool==='ballpen'||active.tool==='highlighter')) return;
+  const now=(typeof performance!=='undefined'?performance.now():0);
+  if(now-activeLastMove < 600) return;
+  const pts=active.points; if(pts.length<4) return;
+  const A=pts[0], B=pts[pts.length-1];
+
+  // ── 닫힌 획: 네모/동그라미 인식 ──
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  for(const p of pts){ if(p.x<x0)x0=p.x; if(p.x>x1)x1=p.x; if(p.y<y0)y0=p.y; if(p.y>y1)y1=p.y; }
+  const w=x1-x0, h=y1-y0, diag=Math.hypot(w,h);
+  const closed = pts.length>=10 && w>36 && h>36 && Math.hypot(B.x-A.x,B.y-A.y) < Math.max(28, diag*0.18);
+  if(closed){
+    const cx=(x0+x1)/2, cy=(y0+y1)/2, rx=w/2, ry=h/2;
+    let eErr=0, rErr=0;
+    for(const p of pts){
+      eErr += Math.abs(Math.hypot((p.x-cx)/rx,(p.y-cy)/ry)-1);                       // 타원 이탈도
+      rErr += Math.min(Math.abs(p.x-x0),Math.abs(p.x-x1),Math.abs(p.y-y0),Math.abs(p.y-y1)); // 테두리 이탈도
+    }
+    eErr/=pts.length; rErr/=(pts.length*Math.min(w,h));
+    let kind=null;
+    if(eErr<0.11 && eErr<rErr*2.2) kind='ellipse';
+    else if(rErr<0.075) kind='rect';
+    if(kind){
+      // 가로세로가 8% 이내로 비슷하면 정사각/정원으로
+      let X1=x1, Y1=y1;
+      if(Math.abs(w-h) < 0.08*Math.max(w,h)){ const s=(w+h)/2; X1=x0+s; Y1=y0+s; }
+      active={id:active.id, tool:'shape', kind, color:active.color, size:active.size,
+              points:[{x:x0,y:y0},{x:X1,y:Y1}], _shapeSnapped:true};
+      if(navigator.vibrate) navigator.vibrate(8);
+      scheduleRender(true);
+    }
+    return;   // 닫힌 곡선인데 도형이 아니면 그대로 둠
+  }
+
+  // ── 열린 획: 직선 인식 ──
+  const dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy);
+  if(len<30) return;
+  let maxd=0;
+  for(const p of pts){
+    const t=((p.x-A.x)*dx+(p.y-A.y)*dy)/(len*len);
+    maxd=Math.max(maxd, Math.hypot(p.x-(A.x+t*dx), p.y-(A.y+t*dy)));
+  }
+  if(maxd > Math.max(10, len*0.12)) return;   // 곡선(글씨)은 변환하지 않음
+  active.points=[{x:A.x,y:A.y,p:0.7}, snapEnd(A,B.x,B.y)];
+  active._lineSnap=true; invalidateInk(active);
+  if(navigator.vibrate) navigator.vibrate(8);
+  scheduleRender(true);
+}
+function snapEnd(A,x,y){   // 수평/수직 5° 이내 정렬
+  const deg=Math.atan2(y-A.y,x-A.x)*180/Math.PI, m=((deg%180)+180)%180;
+  if(m<5||m>175) y=A.y; else if(Math.abs(m-90)<5) x=A.x;
+  return {x,y,p:0.7};
+}
+function finalizeStroke(st){   // 직선 획은 중간점을 채워 지우개/올가미가 어디서든 닿게
+  if(!st||!st._lineSnap) return st;
+  delete st._lineSnap;
+  const [A,B]=st.points, len=Math.hypot(B.x-A.x,B.y-A.y), n=Math.max(2,Math.round(len/14));
+  st.points=Array.from({length:n+1},(_,i)=>({x:A.x+(B.x-A.x)*i/n, y:A.y+(B.y-A.y)*i/n, p:0.7}));
+  return st;
+}
 
 function fitCanvas(){
   const dpr=window.devicePixelRatio||1, W=stage.clientWidth, H=stage.clientHeight;
@@ -1303,6 +1370,7 @@ function commitSuspended(){
   if(!suspended) return;
   const st=suspended.stroke, pg=suspended.page; suspended=null;
   if(!st.points.length) return;
+  finalizeStroke(st);
   pg.strokes.push(st);
   if(pg===page){ pushUndo({t:'add',stroke:st}); if(!appendToStatic(st)) staticValid=false; }
   else { staticValid=false; markDirty(); }
@@ -1313,7 +1381,7 @@ function preemptActive(){
   if(active){
     if(active.tool==='shape'){ const A=active.points[0],B=active.points[1];
       if(A&&B&&Math.hypot(B.x-A.x,B.y-A.y)>6){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); } }
-    else if(active.points.length){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); }
+    else if(active.points.length){ finalizeStroke(active); page.strokes.push(active); pushUndo({t:'add',stroke:active}); }
   } else if(eraseBatch && eraseBatch.length){ pushUndo({t:'erase',strokes:eraseBatch}); }
   active=null; eraseBatch=null; lasso=null; selDrag=null; textDrag=null; textWResize=null; textDragSel=null;
   activePid=null; scheduleRender();
@@ -1353,6 +1421,7 @@ function onDown(e){
     if(e.pointerType==='pen' && suspended.page===page && now<suspended.until
        && (tool==='pen'||tool==='ballpen'||tool==='highlighter') && suspended.stroke.tool===tool){
       active=suspended.stroke; suspended=null; activePid=e.pointerId;
+      activeLastMove=(typeof performance!=='undefined'?performance.now():0);
       invalidateInk(active);
       const p=toPage(l.x,l.y); active.points.push({x:p.x,y:p.y,p:pressure(e,p,true)});
       scheduleRender(true); return;
@@ -1376,7 +1445,9 @@ function startTool(e,l){
     clearTextSel();
   }
   if(tool==='pen'||tool==='ballpen'||tool==='highlighter'){
-    active={id:uid(), tool, color, size:(tool==='highlighter'?hlSize:tool==='ballpen'?ballSize:penSize), points:[{x:p.x,y:p.y,p:pressure(e,p,true)}]}; scheduleRender(true);
+    active={id:uid(), tool, color, size:(tool==='highlighter'?hlSize:tool==='ballpen'?ballSize:penSize), points:[{x:p.x,y:p.y,p:pressure(e,p,true)}]};
+    activeLastMove=(typeof performance!=='undefined'?performance.now():0);
+    scheduleRender(true);
   }else if(tool==='shape'){
     active={id:uid(), tool:'shape', kind:shapeKind, color, size:shapeSize, points:[{x:p.x,y:p.y},{x:p.x,y:p.y}]}; scheduleRender(true);
   }else if(tool==='eraser'){ eraseBatch=[]; eraseAt(p); }
@@ -1408,6 +1479,7 @@ function addActivePoint(ev){
   const k=(ev.pointerType==='pen')?0.82:0.62;
   const sx=last.x+(pp.x-last.x)*k, sy=last.y+(pp.y-last.y)*k;
   active.points.push({x:sx, y:sy, p:pressure(ev,{x:sx,y:sy})});
+  activeLastMove=(typeof performance!=='undefined'?performance.now():0);   // 직선화 홀드 판정용
 }
 
 function onMove(e){
@@ -1424,12 +1496,18 @@ function onMove(e){
   const p=toPage(l.x,l.y);
   if(active){
     if(active.tool==='shape'){
+      if(active._shapeSnapped){ return; }   // 손으로 그려 변환된 도형은 크기 고정(펜을 떼면 확정)
       let bx=p.x,by=p.y;
       if(e.shiftKey && (active.kind==='rect'||active.kind==='ellipse')){ // 정사각/정원
         const a=active.points[0], s=Math.max(Math.abs(p.x-a.x),Math.abs(p.y-a.y));
         bx=a.x+Math.sign(p.x-a.x||1)*s; by=a.y+Math.sign(p.y-a.y||1)*s;
       }
       active.points[1]={x:bx,y:by}; scheduleRender(true); return;   // 그리는 중엔 캐시 재사용
+    }
+    if(active._lineSnap){   // 직선화된 획: 끝점이 펜을 따라옴
+      const pp=toPage(l.x,l.y);
+      active.points[1]=snapEnd(active.points[0], pp.x, pp.y);
+      invalidateInk(active); scheduleRender(true); return;
     }
     // 빠른 획의 중간 좌표(coalesced)까지 모두 반영 → 끊김/각짐 없이 매끄럽게
     const evs=(e.getCoalescedEvents && e.getCoalescedEvents().length)?e.getCoalescedEvents():[e];
@@ -1465,9 +1543,10 @@ function onUp(e){
   if(active){
     let committed=null;
     if(active.tool==='shape'){
+      delete active._shapeSnapped;
       const A=active.points[0], B=active.points[1];
       if(Math.hypot(B.x-A.x,B.y-A.y) > 6){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); committed=active; }
-    } else if(active.points.length){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); committed=active; }
+    } else if(active.points.length){ finalizeStroke(active); page.strokes.push(active); pushUndo({t:'add',stroke:active}); committed=active; }
     active=null;
     if(committed){ if(!appendToStatic(committed)) staticValid=false; }   // 캐시에 덧그림(전체 재렌더 X)
     scheduleRender(true); return;

@@ -1,5 +1,5 @@
-/* 쌤노트 서비스워커 — 앱 셸 캐시 (오프라인 실행) */
-const CACHE = 'ssamnote-v2';
+/* 수연노트 서비스워커 — 앱 셸 캐시 (오프라인 실행) */
+const CACHE = 'ssamnote-v3';
 const ASSETS = [
   './notes.html',
   './manifest.webmanifest',
