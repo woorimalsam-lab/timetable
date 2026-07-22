@@ -631,7 +631,7 @@ function newNotebook(opt){
   if(fol) nb.folder=fol;   // 폴더 안에서 만들면 그 폴더로
   db.notebooks.unshift(nb); dirtyNbs.add(nb.id); nb.pages.forEach(p=>dirtyPgs.add(p.id)); saveNow(); return nb;
 }
-const PAPERS={white:'흰색', cream:'크림', gray:'연회색'};
+const PAPERS={white:'흰색', cream:'크림', gray:'연회색', lavender:'라벤더 줄'};   // lavender: 흰 배경 + 라벤더색 괘선
 /* PDF 배경 이미지 (페이지에 bg/bgId가 있으면 템플릿 대신 그림) */
 const bgImgs=new Map();   // pageId -> Image
 function loadBgImage(pg){
@@ -660,6 +660,7 @@ function paperFill(pg){
   const p=pg&&pg.paper;
   if(p==='cream') return dark?'#242017':'#f8f6e7';
   if(p==='gray')  return dark?'#1c2027':'#eef1f4';
+  if(p==='lavender') return dark?'#211e2e':'#ffffff';   // 흰 배경(다크에선 라벤더 기운의 어두운 종이)
   return cssVar('--paper');
 }
 
@@ -975,7 +976,8 @@ function openNewNote(){
   // 종이 색
   const pg=pop.querySelector('#nnPaper');
   Object.keys(PAPERS).forEach(k=>{ const b=el('button','nnpchip'+(k===selPaper?' on':''));
-    b.innerHTML=`<span class="sw" style="background:${k==='cream'?'#f8f6e7':k==='gray'?'#eef1f4':'#ffffff'}"></span>${PAPERS[k]}`;
+    b.innerHTML=`<span class="sw" style="background:${k==='cream'?'#f8f6e7':k==='gray'?'#eef1f4':
+      k==='lavender'?'repeating-linear-gradient(180deg,#ffffff 0 4px,#b7aaf8 4px 5.5px)':'#ffffff'}"></span>${PAPERS[k]}`;
     b.onclick=()=>{ selPaper=k; pg.querySelectorAll('.nnpchip').forEach(x=>x.classList.remove('on')); b.classList.add('on'); drawTiles(); };
     pg.appendChild(b); });
   // 표지 색
@@ -1306,6 +1308,7 @@ function drawTemplate(c,tpl,paper){
   const dark=document.documentElement.getAttribute('data-theme')==='dark';
   let g,g2;
   if(paper==='cream'){ g=dark?'rgba(220,205,150,.13)':'rgba(150,125,55,.28)'; g2=dark?'rgba(220,205,150,.08)':'rgba(150,125,55,.15)'; }
+  else if(paper==='lavender'){ g=dark?'rgba(168,150,255,.30)':'rgba(139,124,246,.42)'; g2=dark?'rgba(168,150,255,.15)':'rgba(139,124,246,.20)'; }
   else { g = dark? 'rgba(255,255,255,.10)':'rgba(60,80,120,.16)'; g2= dark? 'rgba(255,255,255,.05)':'rgba(60,80,120,.08)'; }
   const step=44, m=64;
   c.save();
