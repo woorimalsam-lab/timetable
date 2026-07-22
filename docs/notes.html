@@ -495,11 +495,14 @@ const COLORS = ['#1c2530','#5b6470','#ff3b30','#ff9500','#ffcc00','#34c759',
 const PEN_SIZES = [2.2,3.6,6,9];
 const HL_SIZES  = [16,26,38];
 const ER_SIZES  = [20,40,70];
-const TEMPLATES = ['blank','lined','narrow','grid','dots','cornell','todo','daily','weekly','monthly','habit','timetable','lesson'];
+const TEMPLATES = ['blank','lined','narrow','grid','dots','cornell','todo','daily','weekly','monthly','habit','timetable','lesson',
+                   'mindmap','kanban','quad','meeting','storyboard'];
 const TEMPLATE_KO = {blank:'무지',lined:'줄노트',narrow:'좁은 줄',grid:'모눈',dots:'점',cornell:'코넬',todo:'체크리스트',
-                     daily:'데일리 플래너',weekly:'위클리 플래너',monthly:'먼슬리 플래너',habit:'습관 트래커',timetable:'시간표',lesson:'수업 계획'};
+                     daily:'데일리 플래너',weekly:'위클리 플래너',monthly:'먼슬리 플래너',habit:'습관 트래커',timetable:'시간표',lesson:'수업 계획',
+                     mindmap:'마인드맵',kanban:'칸반 보드',quad:'4분면',meeting:'회의록',storyboard:'스토리보드'};
 const TEMPLATE_DESC = {blank:'자유롭게',lined:'필기 기본',narrow:'촘촘한 줄',grid:'그래프·표',dots:'도트 그리드',cornell:'코넬 노트',todo:'할 일 목록',
-                       daily:'하루 계획+할 일',weekly:'주간 한눈에',monthly:'달력형 계획',habit:'습관 체크 31일',timetable:'요일×교시',lesson:'교사용 수업안'};
+                       daily:'하루 계획+할 일',weekly:'주간 한눈에',monthly:'달력형 계획',habit:'습관 체크 31일',timetable:'요일×교시',lesson:'교사용 수업안',
+                       mindmap:'생각 뻗어가기',kanban:'할 일 흐름판',quad:'우선순위 매트릭스',meeting:'논의·결정·할 일',storyboard:'6컷 구성'};
 const COVERS = ['#7b6cf0','#f48fb1','#4fc3f7','#4dd0a6','#ffb74d','#f2708a','#64a5f6','#b388f0'];   // 새 노트마다 번갈아 적용
 
 /* ============================ 저장소 ============================ */
@@ -760,9 +763,10 @@ function renderLibrary(){
 /* ---------- 폴더 ---------- */
 function folderCard(f){
   const cnt=db.notebooks.filter(n=>n.folder===f.id).length;
+  const col=f.color||'#8f7bf7';
   const card=el('div','card folder'); card.dataset.fid=f.id;
   card.innerHTML=`
-    <div class="fcover">
+    <div class="fcover" style="background:linear-gradient(150deg,${shade(col,26)},${col} 55%,${shade(col,-16)})">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
         <path d="M3.5 7.2v11.2a1.8 1.8 0 0 0 1.8 1.8h13.4a1.8 1.8 0 0 0 1.8-1.8V9.4a1.8 1.8 0 0 0-1.8-1.8H12L10.1 5.5a1.8 1.8 0 0 0-1.3-.6H5.3a1.8 1.8 0 0 0-1.8 1.8z"/>
       </svg>
@@ -788,12 +792,20 @@ function folderMenu(f){
     <div class="div"></div>
     <button data-a="rn"><span class="ic">✏️</span> 이름 변경</button>
     <div class="div"></div>
+    <div style="padding:8px 12px 2px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.4px">폴더 색상</div>
+    <div style="display:flex;gap:8px;padding:6px 12px 10px;flex-wrap:wrap">
+      ${COVERS.map(c=>`<button data-c="${c}" style="width:26px;height:26px;border-radius:50%;background:${c};padding:0;
+        border:2px solid ${(f.color||'#8f7bf7')===c?'var(--ink)':'rgba(0,0,0,.12)'}"></button>`).join('')}
+    </div>
+    <div class="div"></div>
     <button data-a="del" class="danger"><span class="ic">🗑️</span> 폴더 삭제</button>`;
   document.body.appendChild(m);
   const close=()=>{ m.remove(); bd.remove(); };
   bd.onclick=close;
   m.onclick=e=>{
-    const a=e.target.closest('button')?.dataset.a; if(!a) return; close();
+    const b=e.target.closest('button'); if(!b) return;
+    if(b.dataset.c){ f.color=b.dataset.c; saveNow(); renderLibrary(); close(); return; }   // 색상 선택
+    const a=b.dataset.a; if(!a) return; close();
     if(a==='rn'){ const t=prompt('폴더 이름',f.name); if(t!=null&&t.trim()){ f.name=t.trim(); saveNow(); renderLibrary(); } }
     else if(a==='del'){ if(confirm(`"${f.name}" 폴더를 삭제할까요?\n폴더 안의 노트는 서재로 이동합니다.`)){
       db.notebooks.forEach(n=>{ if(n.folder===f.id){ delete n.folder; dirtyNbs.add(n.id); } });
@@ -1393,6 +1405,79 @@ function drawTemplate(c,tpl,paper){
     for(let r=0;r<7;r++){ const y=gy+hh+r*rh;
       if(r) { c.strokeStyle=g2; c.beginPath();c.moveTo(gx,y);c.lineTo(gx+gw,y);c.stroke(); }
       c.fillStyle=g; c.fillText(String(r+1), gx+pw/2-8, y+rh/2+10); }
+  }else if(tpl==='mindmap'){         // 마인드맵: 중앙 주제 + 6개 가지
+    const cx=PAGE_W/2, cy=PAGE_H/2-60;
+    c.strokeStyle=g; c.lineWidth=1.6;
+    c.beginPath(); c.ellipse(cx,cy,150,80,0,0,7); c.stroke();
+    c.strokeStyle=g2; c.lineWidth=1.3;
+    for(let i=0;i<6;i++){
+      const a=i/6*2*Math.PI+0.35;
+      const x2=cx+Math.cos(a)*540*(i%2?0.85:1), y2=cy+Math.sin(a)*560*0.62;
+      c.beginPath(); c.moveTo(cx+Math.cos(a)*158, cy+Math.sin(a)*92); c.lineTo(x2,y2); c.stroke();
+      c.beginPath(); c.ellipse(x2,y2,108,52,0,0,7); c.stroke();
+    }
+  }else if(tpl==='kanban'){          // 칸반 보드: 할 일 / 진행 중 / 완료
+    const cols=['할 일','진행 중','완료'];
+    const gx=48, gy=150, gw=PAGE_W-96, gh=PAGE_H-220, cw=gw/3;
+    c.strokeStyle=g; c.lineWidth=1.4; c.fillStyle=g; c.font='700 26px -apple-system,sans-serif';
+    c.beginPath(); c.moveTo(gx,92); c.lineTo(gx+420,92); c.stroke();
+    c.strokeRect(gx,gy,gw,gh);
+    cols.forEach((t,i)=>{ const x=gx+i*cw;
+      if(i){ c.beginPath(); c.moveTo(x,gy); c.lineTo(x,gy+gh); c.stroke(); }
+      c.fillText(t, x+cw/2-t.length*13, gy+40);
+    });
+    c.strokeStyle=g2;
+    c.beginPath(); c.moveTo(gx,gy+58); c.lineTo(gx+gw,gy+58); c.stroke();
+    c.setLineDash([6,6]);
+    for(let i=0;i<3;i++) for(let r=0;r<9;r++){
+      const yy=gy+80+r*150; if(yy+110>gy+gh) continue;
+      c.strokeRect(gx+i*cw+18, yy, cw-36, 110);
+    }
+    c.setLineDash([]);
+  }else if(tpl==='quad'){            // 4분면 매트릭스
+    const gx=70, gy=150, gw=PAGE_W-140, gh=PAGE_H-270;
+    c.strokeStyle=g; c.lineWidth=1.5;
+    c.beginPath(); c.moveTo(gx,92); c.lineTo(gx+420,92); c.stroke();
+    c.strokeRect(gx,gy,gw,gh);
+    c.beginPath(); c.moveTo(gx+gw/2,gy); c.lineTo(gx+gw/2,gy+gh); c.stroke();
+    c.beginPath(); c.moveTo(gx,gy+gh/2); c.lineTo(gx+gw,gy+gh/2); c.stroke();
+    c.strokeStyle=g2; c.lineWidth=1;
+    [[gx+24,gy+24],[gx+gw/2+24,gy+24],[gx+24,gy+gh/2+24],[gx+gw/2+24,gy+gh/2+24]].forEach(([x,y])=>{
+      c.beginPath(); c.moveTo(x,y+20); c.lineTo(x+270,y+20); c.stroke();
+    });
+  }else if(tpl==='meeting'){         // 회의록: 일시/참석 + 논의 + 결정 + 할 일
+    const gx=56, gw=PAGE_W-112;
+    c.strokeStyle=g; c.lineWidth=1.4; c.fillStyle=g; c.font='700 24px -apple-system,sans-serif';
+    let y=76;
+    for(const [nm,h] of [['일시',70],['참석',70]]){
+      c.strokeRect(gx,y,gw,h);
+      c.beginPath(); c.moveTo(gx+150,y); c.lineTo(gx+150,y+h); c.stroke();
+      c.fillText(nm,gx+24,y+h/2+9); y+=h;
+    }
+    y+=26; c.fillText('논의 내용',gx+4,y+26); y+=44;
+    c.strokeStyle=g2; c.lineWidth=1;
+    const bodyEnd=PAGE_H-436;
+    for(let ly=y;ly<bodyEnd;ly+=52){ c.beginPath(); c.moveTo(gx,ly); c.lineTo(gx+gw,ly); c.stroke(); }
+    y=bodyEnd+18;
+    c.strokeStyle=g; c.lineWidth=1.4;
+    c.strokeRect(gx,y,gw,168); c.fillText('결정 사항',gx+18,y+34);
+    y+=168+26; c.fillText('할 일',gx+4,y+26); y+=52;
+    for(let i=0;i<3;i++){ const ly=y+i*54;
+      c.strokeRect(gx+6,ly-20,24,24);
+      c.strokeStyle=g2; c.beginPath(); c.moveTo(gx+48,ly); c.lineTo(gx+gw,ly); c.stroke(); c.strokeStyle=g;
+    }
+  }else if(tpl==='storyboard'){      // 스토리보드: 6컷 + 설명 줄
+    const gx=56, gy=140, gw=PAGE_W-112, cw=gw/2-14;
+    c.strokeStyle=g; c.lineWidth=1.4;
+    c.beginPath(); c.moveTo(gx,92); c.lineTo(gx+420,92); c.stroke();
+    const chh=(PAGE_H-gy-40)/3;
+    for(let r=0;r<3;r++) for(let i=0;i<2;i++){
+      const x=gx+i*(cw+28), y=gy+r*chh;
+      c.strokeStyle=g; c.strokeRect(x,y,cw,chh-100);
+      c.strokeStyle=g2;
+      c.beginPath(); c.moveTo(x,y+chh-66); c.lineTo(x+cw,y+chh-66); c.stroke();
+      c.beginPath(); c.moveTo(x,y+chh-30); c.lineTo(x+cw,y+chh-30); c.stroke();
+    }
   }else if(tpl==='lesson'){          // 수업 계획(교사용)
     const gx=56, gw=PAGE_W-112, lab=190;
     const rowsTop=[['단원',96],['학습 목표',96]];
