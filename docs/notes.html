@@ -396,10 +396,12 @@
   <div class="brand"><span class="logo">✎</span><span>수연노트</span></div>
   <div class="grow"></div>
   <button class="install-btn hidden" id="installBtn" title="앱으로 설치">⤓ 앱 설치</button>
+  <button class="tbtn" id="backupBtn" title="백업/기기 간 이동">⇅</button>
   <button class="tbtn" id="themeBtn" title="테마">◐</button>
 </div>
 <div id="library"></div>
 <input type="file" id="pdfFile" accept="application/pdf,.pdf" style="display:none">
+<input type="file" id="bakFile" accept="application/json,.json" style="display:none">
 
 <!-- iOS 앱 설치 안내 -->
 <div id="iosSheet">
@@ -1285,6 +1287,7 @@ function appendToStatic(st){   // 확정된 획 하나를 캐시에 덧그림(O(
 function render(){
   if(!page) return;
   const dpr=fitCanvas(), W=stage.clientWidth, H=stage.clientHeight;
+  if(board.width<2||board.height<2) return;   // 에디터가 닫힌 직후(크기 0) 렌더 방지
   ensureStatic();
   if(!staticValid){ drawCommitted(dpr,W,H); staticValid=true; }
   // 캐시를 화면에 붙이고, 그 위에 '현재 그리는 획 + 선택 오버레이'만 그림
@@ -2535,6 +2538,83 @@ $('#pdfFile').addEventListener('change',e=>{
   const f=e.target.files&&e.target.files[0]; e.target.value='';
   if(f) importPDF(f);
 });
+
+/* ---------- 백업: 다른 기기(노트북 등)로 노트 옮기기 ---------- */
+function blobToDataURL(bl){ return new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(bl); }); }
+async function buildBackup(){
+  const data={ app:'suyeonnote', ver:1, exported:Date.now(),
+    theme:db.theme, folders:db.folders||[],
+    notebooks: db.notebooks.map(n=>JSON.parse(JSON.stringify(n,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v))) };
+  const bgs={};
+  for(const n of db.notebooks) for(const p of n.pages){
+    if(p.bgId&&idb){ const bl=await idbGet('bgs',p.bgId).catch(()=>null); if(bl) bgs[p.bgId]=await blobToDataURL(bl); }
+  }
+  data.bgs=bgs;
+  return data;
+}
+async function exportBackup(){
+  toast('백업 만드는 중…');
+  const data=await buildBackup();
+  const d=new Date(), pad=x=>String(x).padStart(2,'0');
+  const name=`수연노트_백업_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
+  const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
+  const file=new File([blob],name,{type:'application/json'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:'수연노트 백업'}); return; }
+    catch(e){ if(e && e.name==='AbortError') return; }
+  }
+  const a=el('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  toast('백업 파일 저장됨');
+}
+async function importBackup(file){
+  let data=null;
+  try{ data=JSON.parse(await file.text()); }catch(e){}
+  if(!data || data.app!=='suyeonnote' || !Array.isArray(data.notebooks)){ toast('수연노트 백업 파일이 아니에요'); return; }
+  if(!confirm(`백업의 노트 ${data.notebooks.length}권을 가져올까요?\n(이 기기의 기존 노트는 그대로 두고 추가됩니다)`)) return;
+  toast('가져오는 중…');
+  // 폴더: 새 id로 추가하고 매핑
+  const fmap={};
+  for(const f of (data.folders||[])){ const nf={id:uid(),name:f.name,color:f.color}; fmap[f.id]=nf.id; (db.folders=db.folders||[]).push(nf); }
+  for(const n of data.notebooks){
+    n.id=uid();
+    if(n.folder) n.folder=fmap[n.folder]||undefined;
+    for(const p of n.pages){
+      const oldBg=p.bgId; p.id=uid(); delete p.bgId;
+      p.strokes=p.strokes||[]; p.texts=p.texts||[];
+      if(oldBg && data.bgs && data.bgs[oldBg] && idb){
+        try{ const bl=await (await fetch(data.bgs[oldBg])).blob(); await idbPut('bgs',p.id,bl); p.bgId=p.id; }catch(e){}
+      } else if(p.bg && idb){   // 아주 옛 형식(dataURL 내장) 지원
+        try{ const bl=await (await fetch(p.bg)).blob(); await idbPut('bgs',p.id,bl); p.bgId=p.id; delete p.bg; }catch(e){}
+      }
+      dirtyPgs.add(p.id);
+    }
+    dirtyNbs.add(n.id);
+  }
+  db.notebooks.unshift(...data.notebooks);
+  saveNow(); renderLibrary();
+  toast(`노트 ${data.notebooks.length}권을 가져왔어요`);
+}
+$('#bakFile').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(f) importBackup(f); });
+$('#backupBtn').onclick=()=>{
+  $('#menu')?.remove(); $('#backdrop')?.remove();
+  const bd=el('div','backdrop'); bd.id='backdrop';
+  bd.style.cssText='position:fixed;inset:0;z-index:140;background:rgba(10,15,25,.35)';
+  document.body.appendChild(bd);
+  const m=el('div','menu'); m.id='menu';
+  m.style.cssText='position:fixed;left:50%;top:50%;right:auto;transform:translate(-50%,-50%);z-index:150';
+  m.innerHTML=`
+    <div style="padding:10px 14px 4px;font-weight:800;font-size:15px">기기 간 이동 / 백업</div>
+    <div style="padding:0 14px 8px;font-size:12px;color:var(--muted);line-height:1.5;max-width:250px">
+      아이패드에서 내보낸 파일을 노트북 브라우저(같은 주소)에서 가져오면 필기까지 그대로 옮겨져요.</div>
+    <div class="div"></div>
+    <button data-a="ex"><span class="ic">📤</span> 전체 백업 내보내기</button>
+    <button data-a="im"><span class="ic">📥</span> 백업 가져오기</button>`;
+  document.body.appendChild(m);
+  const close=()=>{ m.remove(); bd.remove(); };
+  bd.onclick=close;
+  m.onclick=e=>{ const a=e.target.closest('button')?.dataset.a; if(!a) return; close();
+    if(a==='ex') exportBackup(); else if(a==='im') $('#bakFile').click(); };
+};
 
 function exportPNG(){
   const url=pageToCanvas(page,2).toDataURL('image/png');
