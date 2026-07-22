@@ -760,9 +760,10 @@ function renderLibrary(){
 /* ---------- 폴더 ---------- */
 function folderCard(f){
   const cnt=db.notebooks.filter(n=>n.folder===f.id).length;
+  const col=f.color||'#8f7bf7';
   const card=el('div','card folder'); card.dataset.fid=f.id;
   card.innerHTML=`
-    <div class="fcover">
+    <div class="fcover" style="background:linear-gradient(150deg,${shade(col,26)},${col} 55%,${shade(col,-16)})">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
         <path d="M3.5 7.2v11.2a1.8 1.8 0 0 0 1.8 1.8h13.4a1.8 1.8 0 0 0 1.8-1.8V9.4a1.8 1.8 0 0 0-1.8-1.8H12L10.1 5.5a1.8 1.8 0 0 0-1.3-.6H5.3a1.8 1.8 0 0 0-1.8 1.8z"/>
       </svg>
@@ -788,12 +789,20 @@ function folderMenu(f){
     <div class="div"></div>
     <button data-a="rn"><span class="ic">✏️</span> 이름 변경</button>
     <div class="div"></div>
+    <div style="padding:8px 12px 2px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.4px">폴더 색상</div>
+    <div style="display:flex;gap:8px;padding:6px 12px 10px;flex-wrap:wrap">
+      ${COVERS.map(c=>`<button data-c="${c}" style="width:26px;height:26px;border-radius:50%;background:${c};padding:0;
+        border:2px solid ${(f.color||'#8f7bf7')===c?'var(--ink)':'rgba(0,0,0,.12)'}"></button>`).join('')}
+    </div>
+    <div class="div"></div>
     <button data-a="del" class="danger"><span class="ic">🗑️</span> 폴더 삭제</button>`;
   document.body.appendChild(m);
   const close=()=>{ m.remove(); bd.remove(); };
   bd.onclick=close;
   m.onclick=e=>{
-    const a=e.target.closest('button')?.dataset.a; if(!a) return; close();
+    const b=e.target.closest('button'); if(!b) return;
+    if(b.dataset.c){ f.color=b.dataset.c; saveNow(); renderLibrary(); close(); return; }   // 색상 선택
+    const a=b.dataset.a; if(!a) return; close();
     if(a==='rn'){ const t=prompt('폴더 이름',f.name); if(t!=null&&t.trim()){ f.name=t.trim(); saveNow(); renderLibrary(); } }
     else if(a==='del'){ if(confirm(`"${f.name}" 폴더를 삭제할까요?\n폴더 안의 노트는 서재로 이동합니다.`)){
       db.notebooks.forEach(n=>{ if(n.folder===f.id){ delete n.folder; dirtyNbs.add(n.id); } });
