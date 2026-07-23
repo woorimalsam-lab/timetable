@@ -1809,7 +1809,17 @@ function penButtonPressed(e){
   return e.button===2 || e.button===5 || ((e.buttons||0)&2) || ((e.buttons||0)&32);
 }
 let holdTimer=null, holdStart=null;
+let penTap=null;   // 펜 더블탭 후보: {t,x,y,stroke}
 const HOLD_TOOLS=['pen','ballpen','highlighter','glow','eraser','shape','lasso','text'];
+function strokeSpan(st){ const pts=st.points||[]; if(!pts.length) return 0;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const p of pts){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);}
+  return Math.hypot(x1-x0,y1-y0); }
+function removeDot(st){   // 방금 찍힌 점 하나를 획·실행취소 기록에서 제거(더블탭 시)
+  if(!st) return;
+  page.strokes=page.strokes.filter(s=>s!==st);
+  ensureHist(); for(let i=page._undo.length-1;i>=0;i--){ if(page._undo[i].stroke===st){ page._undo.splice(i,1); break; } }
+  updateUndoUI(); staticValid=false;
+}
 function scheduleHoldMenu(e,l){
   clearHoldMenu();
   if(e.pointerType!=='pen') return;                 // 펜으로 오래 대고 있을 때만
@@ -1957,7 +1967,18 @@ function onUp(e){
       if(Math.hypot(B.x-A.x,B.y-A.y) > 6){ page.strokes.push(active); pushUndo({t:'add',stroke:active}); committed=active; }
     } else if(active.points.length){ finalizeStroke(active); page.strokes.push(active); pushUndo({t:'add',stroke:active}); committed=active; }
     active=null;
-    if(committed){ if(!appendToStatic(committed)) staticValid=false; }   // 캐시에 덧그림(전체 재렌더 X)
+    if(committed){
+      if(!appendToStatic(committed)) staticValid=false;   // 캐시에 덧그림(전체 재렌더 X)
+      // 펜으로 같은 자리를 톡톡 두 번(더블탭) → 도구 팔레트 (애플펜슬 더블탭 대체)
+      if(e.pointerType==='pen' && committed.tool!=='shape' && strokeSpan(committed)*view.s < 9){
+        const up=localXY(e);
+        if(penTap && _penUpT-penTap.t<300 && Math.hypot(up.x-penTap.x,up.y-penTap.y)<12){
+          removeDot(penTap.stroke); removeDot(committed); penTap=null;
+          openHoldToolMenu(up.x,up.y); return;
+        }
+        penTap={t:_penUpT, x:up.x, y:up.y, stroke:committed};
+      } else penTap=null;   // 획을 그으면 더블탭 후보 해제
+    }
     scheduleRender(true); return;
   }
   if(eraseBatch){ if(eraseBatch.length) pushUndo({t:'erase',strokes:eraseBatch}); eraseBatch=null; return; }
