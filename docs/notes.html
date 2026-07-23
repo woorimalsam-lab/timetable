@@ -379,6 +379,21 @@
   .toast .toast-undo:hover{background:rgba(255,255,255,.28)}
 
   .backdrop{position:absolute;inset:0;z-index:38}
+  /* 펜 롱프레스 도구 팔레트 */
+  #htbd{position:absolute;inset:0;z-index:46}
+  #holdtools{position:absolute;z-index:47;display:flex;flex-wrap:wrap;justify-content:center;gap:3px;padding:7px;
+        max-width:min(412px,94vw);transform:translate(-50%,-100%);
+        background:color-mix(in srgb,var(--panel) 94%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+        border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);
+        animation:htpop .14s cubic-bezier(.2,.9,.3,1.2)}
+  @keyframes htpop{from{opacity:0;transform:translate(-50%,-100%) scale(.9)}to{opacity:1}}
+  #holdtools .ht{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+        color:var(--ink);transition:background .12s,transform .1s}
+  #holdtools .ht svg{width:25px;height:25px;display:block}
+  #holdtools .ht:hover{background:var(--panel2)}
+  #holdtools .ht:active{transform:scale(.9)}
+  #holdtools .ht.on{background:var(--accent);color:#fff}
+  #holdtools .ht.on:hover{background:var(--accent2)}
   /* 스크롤바 (서재·페이지 목록) */
   #library::-webkit-scrollbar,#pages .plist::-webkit-scrollbar{width:9px}
   #library::-webkit-scrollbar-thumb,#pages .plist::-webkit-scrollbar-thumb{
@@ -1782,7 +1797,41 @@ function onDown(e){
   if(activePid!=null) preemptActive();
   activePid=e.pointerId;
   startTool(e,l);
+  scheduleHoldMenu(e,l);   // 펜을 제자리에 오래 대면 도구 팔레트
 }
+/* ---------- 펜 롱프레스 → 도구 빠른 변경 팔레트 ---------- */
+let holdTimer=null, holdStart=null;
+const HOLD_TOOLS=['pen','ballpen','highlighter','glow','eraser','shape','lasso','text'];
+function scheduleHoldMenu(e,l){
+  clearHoldMenu();
+  if(e.pointerType!=='pen') return;                 // 펜으로 오래 대고 있을 때만
+  if(tool==='pan'||tool==='text') return;           // 이동/텍스트는 제외(누르면 바로 동작)
+  holdStart={x:l.x,y:l.y};
+  holdTimer=setTimeout(()=>{ holdTimer=null; openHoldToolMenu(holdStart.x,holdStart.y); }, 500);
+}
+function clearHoldMenu(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } }
+function openHoldToolMenu(x,y){
+  cancelActive(); activePid=null;                   // 진행 중이던 점/획 폐기(도구 전환 모드)
+  closeHoldToolMenu();
+  if(navigator.vibrate) navigator.vibrate(12);
+  const bd=el('div'); bd.id='htbd'; bd.onclick=closeHoldToolMenu; stage.appendChild(bd);
+  const m=el('div'); m.id='holdtools';
+  HOLD_TOOLS.forEach(tn=>{
+    const b=el('button','ht'+(tn===tool?' on':''));
+    const src=document.querySelector(`#toolset .rtool[data-tool="${tn}"] svg`);
+    if(src) b.appendChild(src.cloneNode(true));
+    b.title=TOOL_TITLES[tn]||tn;
+    b.onclick=()=>{ setTool(tn); closeHoldToolMenu(); };
+    m.appendChild(b);
+  });
+  stage.appendChild(m);
+  const sw=stage.clientWidth, mw=m.offsetWidth, mh=m.offsetHeight;
+  m.style.left=clamp(x, mw/2+8, sw-mw/2-8)+'px';
+  if(y-16-mh < 6){ m.style.top=(y+44)+'px'; m.style.transform='translate(-50%,0)'; }  // 위 공간 없으면 아래로
+  else m.style.top=(y-16)+'px';
+}
+function closeHoldToolMenu(){ $('#holdtools')?.remove(); $('#htbd')?.remove(); }
+const TOOL_TITLES={pen:'만년필',ballpen:'볼펜',highlighter:'형광펜',glow:'글로우 펜',eraser:'지우개',shape:'도형',lasso:'올가미',text:'텍스트'};
 function startTool(e,l){
   const p=toPage(l.x,l.y);
   // 텍스트 선택 중: 좌우 핸들=너비 조절 / 내부=이동 / 바깥=선택 해제
@@ -1838,6 +1887,7 @@ function onMove(e){
   if(nav.has(e.pointerId)){ navMove(e.pointerId,l); return; }   // 이동/확대 손가락
   if(e.pointerId!==activePid) return;                          // 그리는 포인터만 처리
   if(pointers.has(e.pointerId)){ l.type=e.pointerType; pointers.set(e.pointerId,l); }
+  if(holdTimer && holdStart && Math.hypot(l.x-holdStart.x,l.y-holdStart.y)>10) clearHoldMenu();  // 펜이 움직이면 필기로 간주
 
   if(textWResize){ doWidthResize(l); return; }
   if(textDragSel){ const dx=(l.x-textDragSel.lx)/view.s, dy=(l.y-textDragSel.ly)/view.s;
@@ -1876,6 +1926,7 @@ function onMove(e){
 
 function onUp(e){
   if(e.pointerType==='pen'){ penDown=false; }
+  clearHoldMenu();
   pointers.delete(e.pointerId);
   if(nav.has(e.pointerId)){ navUp(e.pointerId); return; }   // 이동/확대 손가락 뗌
   if(e.pointerId!==activePid) return;
