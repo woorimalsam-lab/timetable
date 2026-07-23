@@ -373,6 +373,10 @@
          letter-spacing:-.1px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
          box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .22s,transform .22s}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  .toast.has-action{pointer-events:auto;display:flex;align-items:center;gap:12px;padding-right:8px}
+  .toast .toast-undo{background:rgba(255,255,255,.16);color:#fff;font-weight:800;font-size:13px;
+        padding:6px 14px;border-radius:999px;white-space:nowrap}
+  .toast .toast-undo:hover{background:rgba(255,255,255,.28)}
 
   .backdrop{position:absolute;inset:0;z-index:38}
   /* 스크롤바 (서재·페이지 목록) */
@@ -2184,6 +2188,7 @@ function insertText(str, strokes, bb){
   page.texts.push(t);
   pushUndo({t:'convert',strokes:strokes.slice(),text:t});
   clearSelection(); selectTexts([t]); scheduleRender();   // 변환 직후 바로 크기 조정/메뉴 가능
+  toastUndo('텍스트로 바꿨어요');   // 방금 변환 → '취소'로 손글씨 복원
 }
 function commonColor(strokes){ const m={}; strokes.forEach(s=>{m[s.color]=(m[s.color]||0)+1;});
   return Object.keys(m).sort((a,b)=>m[b]-m[a])[0]||COLORS[0]; }
@@ -2347,6 +2352,7 @@ function commitText(){
     clearTextSel();
   } else if(wasNew){
     pushUndo({t:'textadd',text:t});
+    toastUndo('텍스트 입력됨');   // 방금 만든 글상자 → '취소'로 제거
   } else if(val!==before){
     pushUndo({t:'textedit',text:t,before,after:val});
   } else { markDirty(); }
@@ -2711,8 +2717,19 @@ function esc(s){ return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>
 function shade(hex,amt){ const n=parseInt(hex.slice(1),16); let r=(n>>16)+amt,g=((n>>8)&255)+amt,b=(n&255)+amt;
   r=clamp(r,0,255);g=clamp(g,0,255);b=clamp(b,0,255); return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
 let toastT;
-function toast(msg){ let t=$('.toast'); if(!t){t=el('div','toast'); stage.appendChild(t);} t.textContent=msg; t.classList.add('show');
+function toast(msg){ let t=$('.toast'); if(!t){t=el('div','toast'); stage.appendChild(t);}
+  t.classList.remove('has-action'); t.textContent=msg; t.classList.add('show');
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1600); }
+// 방금 한 동작을 바로 되돌리는 '취소' 버튼이 달린 알림 (입력·변환 직후)
+function toastUndo(msg, onUndo){
+  let t=$('.toast'); if(!t){t=el('div','toast'); stage.appendChild(t);}
+  t.textContent=''; t.classList.add('has-action','show');
+  const span=el('span'); span.textContent=msg; t.appendChild(span);
+  const btn=el('button','toast-undo'); btn.textContent='취소';
+  btn.onclick=()=>{ (onUndo||undo)(); t.classList.remove('show'); clearTimeout(toastT); };
+  t.appendChild(btn);
+  clearTimeout(toastT); toastT=setTimeout(()=>{ t.classList.remove('show'); },5000);   // 넉넉히 5초
+}
 
 /* 키보드 단축키 */
 addEventListener('keydown',e=>{
