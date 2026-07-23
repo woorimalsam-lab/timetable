@@ -1720,6 +1720,8 @@ board.addEventListener('pointerleave', e=>{ if(e.pointerType==='mouse') onUp(e);
 // pointercancel이 와서 획이 중간에 끊김 → 보드의 터치 기본 동작을 전부 차단
 board.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
 board.addEventListener('touchmove',  e=>e.preventDefault(), {passive:false});
+// 펜 옆 버튼(=마우스 오른쪽버튼으로 매핑)이 브라우저 컨텍스트 메뉴를 띄우지 않도록
+board.addEventListener('contextmenu', e=>e.preventDefault());
 
 function localXY(e){ const r=board.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
 
@@ -1753,6 +1755,8 @@ function preemptActive(){
 }
 function onDown(e){
   const l=localXY(e); l.type=e.pointerType;
+  // 스타일러스 옆 버튼(배럴 버튼)·지우개단이 눌린 채 닿으면 → 도구 팔레트 즉시 표시
+  if(e.pointerType==='pen' && penButtonPressed(e)){ openHoldToolMenu(l.x,l.y); return; }
   // 펜이 닿아 있는 동안(획 그리는 중 포함)의 손 터치는 전부 무시 — 손바닥 방어
   // (접촉 크기 기반 판정은 iOS 보고값이 기기·누름에 따라 제각각이라 사용하지 않음)
   if(e.pointerType==='touch'){
@@ -1799,7 +1803,11 @@ function onDown(e){
   startTool(e,l);
   scheduleHoldMenu(e,l);   // 펜을 제자리에 오래 대면 도구 팔레트
 }
-/* ---------- 펜 롱프레스 → 도구 빠른 변경 팔레트 ---------- */
+/* ---------- 펜 옆 버튼 / 롱프레스 → 도구 빠른 변경 팔레트 ---------- */
+// 스타일러스 배럴 버튼(오른쪽=버튼2) 또는 지우개단(버튼5/비트32)이 눌렸는지
+function penButtonPressed(e){
+  return e.button===2 || e.button===5 || ((e.buttons||0)&2) || ((e.buttons||0)&32);
+}
 let holdTimer=null, holdStart=null;
 const HOLD_TOOLS=['pen','ballpen','highlighter','glow','eraser','shape','lasso','text'];
 function scheduleHoldMenu(e,l){
