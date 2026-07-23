@@ -10,34 +10,18 @@ import json
 import glob
 from base64 import b64encode
 
-import time
-
 import requests
 from bs4 import BeautifulSoup
 
-# 서버 IP가 바뀌므로 도메인을 사용한다 (예전 하드코딩 IP 222.106.100.23 은 2026-07 사망)
-COMCI_URL = "http://comci.net:4082"
+COMCI_URL = "http://222.106.100.23:4082"
 SCHOOL_QUERY = "심원고"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "docs", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-def get(url, timeout=20, tries=5):
-    """컴시간 서버가 간헐적으로 죽으므로 재시도한다."""
-    last = None
-    for i in range(tries):
-        try:
-            return requests.get(url, timeout=timeout)
-        except Exception as e:
-            last = e
-            print(f"  요청 실패({i+1}/{tries}): {type(e).__name__} — 재시도")
-            time.sleep(5 * (i + 1))
-    raise last
-
-
 def load_base():
-    r = get(f"{COMCI_URL}/st", timeout=20)
+    r = requests.get(f"{COMCI_URL}/st", timeout=20)
     r.encoding = "EUC-KR"
     script = BeautifulSoup(r.text, "lxml").find_all("script")[1].contents[0]
     route = re.search(r"\./\d+\?\d+l", script).group(0)
@@ -53,7 +37,7 @@ def find_school(base):
     enc = "%".join(
         str(SCHOOL_QUERY.encode("EUC-KR")).upper()[2:-1].replace("\\X", "\\").split("\\")
     )
-    resp = get(base["searchurl"] + enc, timeout=20)
+    resp = requests.get(base["searchurl"] + enc, timeout=20)
     resp.encoding = "UTF-8"
     raw = json.loads(resp.text.replace("\0", ""))["학교검색"]
     return {"region": raw[0][1], "name": raw[0][2], "code": raw[0][3]}
@@ -77,7 +61,7 @@ def norm_start(label):
 
 def fetch_week(base, code, r):
     url = f"{base['baseurl']}?" + b64encode(f"{base['prefix']}{code}_0_{r}".encode()).decode()
-    raw = json.loads(get(url, timeout=20).content.decode("utf-8", "ignore").replace("\0", ""))
+    raw = json.loads(requests.get(url, timeout=20).content.decode("utf-8", "ignore").replace("\0", ""))
 
     teachers = raw["자료446"]
     subjects = raw["자료492"]
