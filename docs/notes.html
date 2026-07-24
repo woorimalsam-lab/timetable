@@ -575,7 +575,7 @@ function idbDel(st,key){ return new Promise((res,rej)=>{ const t=idb.transaction
 // 필기 중 저장은 '방금 쓴 페이지 하나'만 직렬화 → 노트가 아무리 커져도 저장 비용이 일정(끊김 방지).
 const nbShell=(n)=>JSON.stringify({...n, pages:n.pages.map(p=>({id:p.id,template:p.template,paper:p.paper,bgId:p.bgId}))},
                                   (k,v)=>(k==='_undo'||k==='_redo')?undefined:v);
-const pgJSON=(p)=>JSON.stringify({strokes:p.strokes||[], texts:p.texts||[], images:p.images||[]});
+const pgJSON=(p)=>JSON.stringify({strokes:p.strokes||[], texts:p.texts||[], images:p.images||[], pdfText:p.pdfText||''});
 function findPageById(pid){ for(const n of db.notebooks){ const p=n.pages.find(x=>x.id===pid); if(p) return p; } return null; }
 async function initStorage(){
   try{ idb=await idbOpen(); }catch(e){ idb=null; return; }   // IDB 불가 시 localStorage로 계속
@@ -595,7 +595,7 @@ async function initStorage(){
       for(const n of list) for(const p of n.pages){
         if(Array.isArray(p.strokes)){ legacy=true; continue; }            // v2: 내용 인라인
         let c=pgMap.get(p.id); try{ c=(typeof c==='string')?JSON.parse(c):c; }catch(e){ c=null; }
-        p.strokes=(c&&c.strokes)||[]; p.texts=(c&&c.texts)||[]; p.images=(c&&c.images)||[];
+        p.strokes=(c&&c.strokes)||[]; p.texts=(c&&c.texts)||[]; p.images=(c&&c.images)||[]; if(c&&c.pdfText) p.pdfText=c.pdfText;
       }
       db={...meta, notebooks:list}; delete db.order;
       if(!legacy) return;
@@ -801,7 +801,7 @@ let curFolder=null;   // 현재 열린 폴더 id (null=서재 루트)
 let librarySearch='';
 let librarySort=(['recent','name','created'].includes(db.librarySort))?db.librarySort:'manual';
 const SORT_LABEL={manual:'직접 정렬',recent:'최근순',name:'이름순',created:'만든순'};
-function nbSearchText(n){ let s=(n.title||''); for(const p of n.pages) for(const t of (p.texts||[])) s+=' '+(t.text||''); return s.toLowerCase(); }
+function nbSearchText(n){ let s=(n.title||''); for(const p of n.pages){ for(const t of (p.texts||[])) s+=' '+(t.text||''); if(p.pdfText) s+=' '+p.pdfText; } return s.toLowerCase(); }
 function sortNotes(arr){ const key=librarySort;
   return arr.map(n=>({n,dbi:db.notebooks.indexOf(n)})).sort((a,b)=>{
     const fa=a.n.fav?1:0, fb=b.n.fav?1:0; if(fa!==fb) return fb-fa;   // 즐겨찾기 먼저
@@ -2789,6 +2789,11 @@ async function importPDF(file){
       const cx=cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cv.width,cv.height);
       await pg.render({canvasContext:cx, viewport:vp}).promise;
       const p=newPage('blank','white');
+      // PDF 텍스트 레이어 추출 → 검색 가능하게 저장 (스캔 이미지 PDF는 텍스트 없음)
+      try{ const tc=await pg.getTextContent();
+        const txt=tc.items.map(it=>it.str).join(' ').replace(/\s+/g,' ').trim();
+        if(txt) p.pdfText=txt;
+      }catch(e){}
       if(idb){ const bl=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.8)); if(!bl) throw new Error('toBlob'); await idbPut('bgs',p.id,bl); p.bgId=p.id; }
       else p.bg=cv.toDataURL('image/jpeg',0.75);
       pages.push(p);
