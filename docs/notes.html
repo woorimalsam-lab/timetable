@@ -1313,11 +1313,12 @@ $('#pgNext').onclick=()=>{ if(pi<nb.pages.length-1) gotoPage(pi+1); };
 const toPage = (sx,sy)=>({x:(sx-view.tx)/view.s, y:(sy-view.ty)/view.s});
 const toScreen=(px,py)=>({x:px*view.s+view.tx, y:py*view.s+view.ty});
 function clampView(){
+  // 확대 시 페이지의 네 방향 끝까지 볼 수 있도록 좌우·상하 대칭으로 제한(여백 m)
   const W=stage.clientWidth,H=stage.clientHeight, pw=PAGE_W*view.s, ph=PAGE_H*view.s, m=80;
-  view.tx=clamp(view.tx, Math.min(m, W-pw-m), Math.max(W-pw-m, m>W-pw? (W-pw)/2 : m));
-  if(pw<=W) view.tx=(W-pw)/2;
-  view.ty=clamp(view.ty, Math.min(16, H-ph-40), Math.max(16, H-ph-40>16?16:H-ph-40));
+  if(pw<=W) view.tx=(W-pw)/2;                       // 화면보다 작으면 가운데
+  else view.tx=clamp(view.tx, W-pw-m, m);           // 오른쪽 끝(W-pw-m) ~ 왼쪽 끝(m)
   if(ph<=H) view.ty=Math.max(16,(H-ph)/2);
+  else view.ty=clamp(view.ty, H-ph-m, m);
 }
 
 /* ============================ 렌더링 ============================ */
