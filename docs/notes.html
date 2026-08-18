@@ -575,11 +575,59 @@ function idbDel(st,key){ return new Promise((res,rej)=>{ const t=idb.transaction
 // 필기 중 저장은 '방금 쓴 페이지 하나'만 직렬화 → 노트가 아무리 커져도 저장 비용이 일정(끊김 방지).
 const nbShell=(n)=>JSON.stringify({...n, pages:n.pages.map(p=>({id:p.id,template:p.template,paper:p.paper,bgId:p.bgId}))},
                                   (k,v)=>(k==='_undo'||k==='_redo')?undefined:v);
-const pgJSON=(p)=>JSON.stringify({strokes:p.strokes||[], texts:p.texts||[], images:p.images||[], pdfText:p.pdfText||''});
+// 페이지 레코드는 '자기완결형' — 소유 노트(nb)·순서(i)·종이 정보까지 담아, 노트 목록이 유실돼도 복구 가능
+const pgJSON=(p,nbId,idx)=>JSON.stringify({nb:nbId||'', i:idx||0,
+  template:p.template||'lined', paper:p.paper||'cream', bgId:p.bgId||'',
+  strokes:p.strokes||[], texts:p.texts||[], images:p.images||[], pdfText:p.pdfText||''});
 function findPageById(pid){ for(const n of db.notebooks){ const p=n.pages.find(x=>x.id===pid); if(p) return p; } return null; }
+function findPageOwner(pid){ for(const n of db.notebooks){ const i=n.pages.findIndex(x=>x.id===pid); if(i>=0) return {n,i,p:n.pages[i]}; } return null; }
+
+/* ---------- 저장 저널(localStorage, 동기) ----------
+   IndexedDB 쓰기는 비동기라 iOS가 앱을 종료하면 완료되지 못해 방금 만든 페이지가 사라질 수 있다.
+   그래서 쓰기 직전에 같은 내용을 localStorage에 동기로 남기고, IDB 기록이 확인되면 지운다.
+   다음 실행 때 남아 있는 저널을 먼저 되살린다. */
+const JRN_KEY='ssamnote_journal_v1';
+const JRN_MAX_ENTRY=700000, JRN_MAX_TOTAL=3500000;
+function journalRead(){ try{ return JSON.parse(localStorage.getItem(JRN_KEY))||{}; }catch(e){ return {}; } }
+function journalWrite(j){ try{ localStorage.setItem(JRN_KEY, JSON.stringify(j)); }catch(e){} }
+function journalPut(store,key,val){
+  if(typeof val==='string' && val.length>JRN_MAX_ENTRY) return;   // 너무 큰 레코드는 IDB에만
+  const j=journalRead(); (j[store]=j[store]||{})[key]=val;
+  const str=JSON.stringify(j); if(str.length>JRN_MAX_TOTAL) return;
+  try{ localStorage.setItem(JRN_KEY,str); }catch(e){}
+}
+function journalDone(store,key){
+  const j=journalRead(); if(!j[store]) return;
+  delete j[store][key]; if(!Object.keys(j[store]).length) delete j[store];
+  if(!Object.keys(j).length) { try{ localStorage.removeItem(JRN_KEY); }catch(e){} return; }
+  journalWrite(j);
+}
+async function journalReplay(){
+  const j=journalRead(); let n=0;
+  for(const store of Object.keys(j)){
+    for(const key of Object.keys(j[store])){
+      try{ await idbPut(store,key,j[store][key]); n++; }catch(e){}
+    }
+  }
+  if(n) try{ localStorage.removeItem(JRN_KEY); }catch(e){}
+  return n;
+}
+let _recoveredPages=0;   // 시작 시 복구한 페이지 수(알림용)
+let storageDegraded=false;   // IndexedDB를 못 연 상태(임시 저장 모드)
 async function initStorage(){
-  try{ idb=await idbOpen(); }catch(e){ idb=null; return; }   // IDB 불가 시 localStorage로 계속
+  // IndexedDB 열기는 iOS에서 일시적으로 실패(다른 탭이 잡고 있거나 시작 직후)할 수 있다.
+  // 한 번 실패했다고 빈 서재로 시작하면 그 상태에서 만든 노트가 다음 실행 때 사라지므로 재시도한다.
+  for(let attempt=0; attempt<4 && !idb; attempt++){
+    try{ idb=await idbOpen(); }
+    catch(e){ idb=null; await new Promise(r=>setTimeout(r, 200*(attempt+1))); }
+  }
+  if(!idb){   // 끝내 실패 — localStorage로 계속하되 사용자에게 알림(덮어써서 잃지 않도록)
+    storageDegraded=true;
+    setTimeout(()=>toast('저장소를 열지 못했어요. 앱을 완전히 닫았다 다시 열어주세요'),800);
+    return;
+  }
   navigator.storage?.persist?.().catch(()=>{});               // 브라우저의 임의 삭제 방지 요청
+  await journalReplay();                                      // 지난 실행에서 못 끝낸 저장 먼저 되살림
   let legacy=false;
   try{
     const meta=await idbGet('kv','meta');
@@ -597,7 +645,43 @@ async function initStorage(){
         let c=pgMap.get(p.id); try{ c=(typeof c==='string')?JSON.parse(c):c; }catch(e){ c=null; }
         p.strokes=(c&&c.strokes)||[]; p.texts=(c&&c.texts)||[]; p.images=(c&&c.images)||[]; if(c&&c.pdfText) p.pdfText=c.pdfText;
       }
+      // 노트 목록(껍데기)에 빠진 페이지 복구 — 저장 도중 앱이 종료돼 목록만 옛것으로 남은 경우
+      const byNb=new Map();
+      for(const [k,v] of pgMap){
+        let c=v; try{ c=(typeof v==='string')?JSON.parse(v):v; }catch(e){ c=null; }
+        if(c&&c.nb){ if(!byNb.has(c.nb)) byNb.set(c.nb,[]); byNb.get(c.nb).push({id:k,c}); }
+      }
+      let recovered=0;
+      for(const n of list){
+        const recs=byNb.get(n.id)||[]; const have=new Set(n.pages.map(p=>p.id));
+        const miss=recs.filter(r=>!have.has(r.id)).sort((a,b)=>(a.c.i||0)-(b.c.i||0));
+        for(const r of miss){
+          const p={id:r.id, template:r.c.template||'lined', paper:r.c.paper||'cream',
+                   strokes:r.c.strokes||[], texts:r.c.texts||[], images:r.c.images||[]};
+          if(r.c.bgId) p.bgId=r.c.bgId;
+          if(r.c.pdfText) p.pdfText=r.c.pdfText;
+          const at=clamp(r.c.i==null?n.pages.length:r.c.i, 0, n.pages.length);
+          n.pages.splice(at,0,p); recovered++;
+          dirtyNbs.add(n.id);   // 복구된 목록을 다시 저장
+        }
+      }
       db={...meta, notebooks:list}; delete db.order;
+      // 저장소를 못 열었던 실행에서 localStorage에 임시로 쌓인 노트가 있으면 합쳐서 되살림
+      try{
+        const stray=JSON.parse(localStorage.getItem(DB_KEY)||'null');
+        if(stray && Array.isArray(stray.notebooks) && stray.notebooks.length){
+          const have=new Set(db.notebooks.map(n=>n.id));
+          const add=stray.notebooks.filter(n=>n && n.id && !have.has(n.id));
+          for(const n of add){
+            n.pages=(n.pages||[]).map(p=>({...p, strokes:p.strokes||[], texts:p.texts||[], images:p.images||[]}));
+            db.notebooks.unshift(n); dirtyNbs.add(n.id); n.pages.forEach(p=>dirtyPgs.add(p.id));
+            recovered+=n.pages.length;
+          }
+          localStorage.removeItem(DB_KEY);
+          if(add.length) setTimeout(()=>_writeDB(),0);
+        }
+      }catch(e){}
+      if(recovered){ _recoveredPages=recovered; setTimeout(()=>_writeDB(),0); }
       if(!legacy) return;
     }else{
       // 구버전: 통짜 레코드(kv 'db') 또는 localStorage
@@ -630,18 +714,27 @@ const dirtyNbs=new Set();     // 저장할 노트 껍데기 id
 const dirtyPgs=new Set();     // 저장할 페이지 id (변경된 페이지만 직렬화)
 function _writeDB(){
   if(!idb){ try{ localStorage.setItem(DB_KEY,JSON.stringify(db,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v)); }catch(e){ toast('저장 공간이 부족합니다'); } return; }
-  _persistMeta().catch(()=>{});
+  // 메타(노트 순서·설정)
+  const meta=JSON.parse(JSON.stringify({...db, notebooks:undefined, order:db.notebooks.map(n=>n.id)}));
+  journalPut('kv','meta',meta);
+  idbPut('kv','meta',meta).then(()=>journalDone('kv','meta')).catch(()=>{});
+  // 노트 껍데기 — 기록이 확인된 뒤에만 '변경됨' 표시를 해제(중간에 앱이 꺼져도 다음에 다시 저장)
   for(const id of [...dirtyNbs]){
-    dirtyNbs.delete(id);
     const n=db.notebooks.find(x=>x.id===id);
-    if(!n){ idbDel('nbs',id).catch(()=>{}); continue; }
-    idbPut('nbs',id,nbShell(n)).catch(()=>{ dirtyNbs.add(id); toast('저장 실패 — 기기 저장 공간을 확인해 주세요'); });
+    if(!n){ dirtyNbs.delete(id); journalDone('nbs',id); idbDel('nbs',id).catch(()=>{}); continue; }
+    const val=nbShell(n);
+    journalPut('nbs',id,val);
+    idbPut('nbs',id,val).then(()=>{ dirtyNbs.delete(id); journalDone('nbs',id); })
+      .catch(()=>{ toast('저장 실패 — 기기 저장 공간을 확인해 주세요'); });
   }
+  // 페이지 내용
   for(const pid of [...dirtyPgs]){
-    dirtyPgs.delete(pid);
-    const pg=findPageById(pid);
-    if(!pg){ idbDel('pgs',pid).catch(()=>{}); continue; }
-    idbPut('pgs',pid,pgJSON(pg)).catch(()=>{ dirtyPgs.add(pid); toast('저장 실패 — 기기 저장 공간을 확인해 주세요'); });
+    const own=findPageOwner(pid);
+    if(!own){ dirtyPgs.delete(pid); journalDone('pgs',pid); idbDel('pgs',pid).catch(()=>{}); continue; }
+    const val=pgJSON(own.p, own.n.id, own.i);
+    journalPut('pgs',pid,val);
+    idbPut('pgs',pid,val).then(()=>{ dirtyPgs.delete(pid); journalDone('pgs',pid); })
+      .catch(()=>{ toast('저장 실패 — 기기 저장 공간을 확인해 주세요'); });
   }
 }
 // localStorage 쓰기는 동기(메인 스레드 차단)라서 필기 도중/직후에 실행되면 다음 획 시작이 늦어짐.
@@ -1074,7 +1167,8 @@ function bookMenu(n){
     else if(a==='dup'){ await duplicateNotebook(n); }
     else if(a==='mv'){ folderPickMenu(n); }
     else if(a==='del'){ if(confirm(`"${n.title}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)){
-      n.pages.forEach(p=>{ if(idb){ if(p.bgId) idbDel('bgs',p.bgId).catch(()=>{}); idbDel('pgs',p.id).catch(()=>{}); } bgImgs.delete(p.id); });
+      n.pages.forEach(p=>{ dirtyPgs.delete(p.id); journalDone('pgs',p.id);
+        if(idb){ if(p.bgId) idbDel('bgs',p.bgId).catch(()=>{}); idbDel('pgs',p.id).catch(()=>{}); } bgImgs.delete(p.id); });
       db.notebooks=db.notebooks.filter(x=>x.id!==n.id); dirtyNbs.add(n.id); saveNow(); renderLibrary(); } }
   };
 }
@@ -2598,7 +2692,8 @@ function closeTextEditor(){ if(tedit){ const ta=tedit; tedit=null; teditText=nul
 /* ============================ 페이지 패널 ============================ */
 $('#pagesBtn').onclick=()=>{ $('#pages').classList.toggle('open'); if($('#pages').classList.contains('open')) buildPageList(); };
 $('#pagesClose').onclick=()=>$('#pages').classList.remove('open');
-function addPageAfter(){ const p=newPage(page.template, page.paper); nb.pages.splice(pi+1,0,p); gotoPage(pi+1); buildPageList(); markDirty(); }
+function addPageAfter(){ const p=newPage(page.template, page.paper); nb.pages.splice(pi+1,0,p); gotoPage(pi+1); buildPageList();
+  dirtyNbs.add(nb.id); dirtyPgs.add(p.id); markDirty(); saveNow(); }   // 구조 변경은 즉시 저장
 $('#addPageBtn').onclick=addPageAfter;
 $('#addPageBtn2').onclick=addPageAfter;
 $('#exportBtn').onclick=()=>{
@@ -2646,9 +2741,13 @@ function refreshThumb(k){
 function delPage(k){
   if(nb.pages.length<=1){ toast('마지막 페이지는 삭제할 수 없어요'); return; }
   if(!confirm(`${k+1}쪽을 삭제할까요?`)) return;
-  const rp=nb.pages[k]; if(idb){ if(rp.bgId) idbDel('bgs',rp.bgId).catch(()=>{}); idbDel('pgs',rp.id).catch(()=>{}); } bgImgs.delete(rp.id);
+  const rp=nb.pages[k];
+  dirtyPgs.delete(rp.id); journalDone('pgs',rp.id);   // 저널에 남아 되살아나지 않도록
+  if(idb){ if(rp.bgId) idbDel('bgs',rp.bgId).catch(()=>{}); idbDel('pgs',rp.id).catch(()=>{}); } bgImgs.delete(rp.id);
   nb.pages.splice(k,1); if(pi>=nb.pages.length)pi=nb.pages.length-1;
-  page=nb.pages[pi]; buildPageList(); refreshPageUI(); scheduleRender(); markDirty();
+  page=nb.pages[pi]; buildPageList(); refreshPageUI(); scheduleRender();
+  dirtyNbs.add(nb.id); nb.pages.forEach(p=>dirtyPgs.add(p.id));   // 남은 페이지 순서 갱신
+  markDirty(); saveNow();
 }
 function renderThumb(pg, cv){
   const c=cv.getContext('2d'); const sc=cv.width/PAGE_W;
@@ -3000,6 +3099,7 @@ initStorage().catch(()=>{}).then(()=>{
   fingerDraw = db.fingerDraw===true;
   openTabs = Array.isArray(db.openTabs)? db.openTabs.slice() : [];
   renderLibrary();
+  if(_recoveredPages) setTimeout(()=>toast(`저장되지 않았던 ${_recoveredPages}쪽을 복구했어요`),600);
 });
 
 /* ============================ 앱 설치(PWA) — 오프라인 실행 ============================ */
