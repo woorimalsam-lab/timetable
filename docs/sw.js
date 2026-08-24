@@ -27,6 +27,7 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;          // 외부 요청은 그대로
+  if (url.pathname.startsWith('/comci-timetable/')) return; // 시간표 데이터는 항상 최신(네트워크)
   // notes.html(내비게이션 포함): 캐시 우선 + 백그라운드 갱신
   e.respondWith(
     caches.match(req).then(cached => {
