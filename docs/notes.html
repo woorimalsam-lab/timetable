@@ -549,6 +549,7 @@ const COVERS = ['#7b6cf0','#f48fb1','#4fc3f7','#4dd0a6','#ffb74d','#f2708a','#64
 /* ============================ 저장소 ============================ */
 // 노트는 IndexedDB(수백 MB 이상)에 저장. 과거 localStorage(약 5MB) 데이터는 최초 1회 자동 이전.
 // PDF 배경 이미지는 'bgs' 저장소에 페이지별 Blob으로 분리 → 노트 본문 JSON은 작게 유지.
+const APP_VERSION='2026-08-25c';   // 실행 중인 앱 버전(서재 하단 표시)
 const DB_KEY='ssamnote_db_v2';
 let db = load();                 // 부팅 직후엔 localStorage(있다면)로 시작, initStorage()가 IDB로 교체
 let idb=null;
@@ -955,7 +956,7 @@ function renderLibrary(){
     head.innerHTML=`<button class="fback" id="fback" title="서재로">‹</button>
       <div><h2>${esc(fld.name)}</h2><div class="sub">폴더 · ${notes.length}권의 노트</div></div>`;
   }else{
-    head.innerHTML=`<div><h2>서재</h2><div class="sub">${db.notebooks.length}권의 노트 · 이 기기에 저장됩니다</div></div>`;
+    head.innerHTML=`<div><h2>서재</h2><div class="sub">${db.notebooks.length}권의 노트 · 이 기기에 저장됩니다 · v${APP_VERSION}</div></div>`;
   }
   wrap.appendChild(head);
   if(!searching && fld){ head.querySelector('#fback').onclick=()=>{ curFolder=null; renderLibrary(); }; }
@@ -3109,7 +3110,13 @@ initStorage().catch(()=>{}).then(()=>{
 
 /* ============================ 앱 설치(PWA) — 오프라인 실행 ============================ */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
-  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(reg=>{ try{ reg.update(); }catch(e){} }).catch(()=>{}));
+  // 새 버전이 적용되면 한 번만 자동 새로고침 (아이패드에서 옛 버전이 계속 실행되지 않도록)
+  let _swReloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(_swReloaded) return; _swReloaded=true;
+    saveNow(); location.reload();
+  });
 }
 
 /* 홈 화면 설치 버튼 */
