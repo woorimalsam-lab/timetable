@@ -3,42 +3,25 @@
 컴시간 공개 시간표를 받아 docs/data/ 에 JSON으로 저장하는 스크립트.
 GitHub Actions가 몇 시간마다 실행 → 커밋 → GitHub Pages로 서빙.
 지난 주차 파일은 지우지 않으므로 '지난 기록'이 저절로 쌓인다.
-컴시간 API는 이번주+다음주만 주므로, 그 이후는 이번 학기 표준표를 미래로 투영한다.
 """
 import os
 import re
 import json
 import glob
-import time
 from base64 import b64encode
-from datetime import date, timedelta
 
 import requests
 from bs4 import BeautifulSoup
 
-# 서버 IP가 바뀌므로 도메인을 사용한다 (예전 하드코딩 IP 222.106.100.23 은 2026-07 사망)
-COMCI_URL = "http://comci.net:4082"
+COMCI_URL = "http://222.106.100.23:4082"
 SCHOOL_QUERY = "심원고"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "docs", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-def get(url, timeout=20, tries=5):
-    """컴시간 서버가 간헐적으로 죽으므로 재시도한다."""
-    last = None
-    for i in range(tries):
-        try:
-            return requests.get(url, timeout=timeout)
-        except Exception as e:
-            last = e
-            print(f"  요청 실패({i+1}/{tries}): {type(e).__name__} — 재시도")
-            time.sleep(5 * (i + 1))
-    raise last
-
-
 def load_base():
-    r = get(f"{COMCI_URL}/st", timeout=20)
+    r = requests.get(f"{COMCI_URL}/st", timeout=20)
     r.encoding = "EUC-KR"
     script = BeautifulSoup(r.text, "lxml").find_all("script")[1].contents[0]
     route = re.search(r"\./\d+\?\d+l", script).group(0)
@@ -54,7 +37,7 @@ def find_school(base):
     enc = "%".join(
         str(SCHOOL_QUERY.encode("EUC-KR")).upper()[2:-1].replace("\\X", "\\").split("\\")
     )
-    resp = get(base["searchurl"] + enc, timeout=20)
+    resp = requests.get(base["searchurl"] + enc, timeout=20)
     resp.encoding = "UTF-8"
     raw = json.loads(resp.text.replace("\0", ""))["학교검색"]
     return {"region": raw[0][1], "name": raw[0][2], "code": raw[0][3]}
@@ -78,7 +61,7 @@ def norm_start(label):
 
 def fetch_week(base, code, r):
     url = f"{base['baseurl']}?" + b64encode(f"{base['prefix']}{code}_0_{r}".encode()).decode()
-    raw = json.loads(get(url, timeout=20).content.decode("utf-8", "ignore").replace("\0", ""))
+    raw = json.loads(requests.get(url, timeout=20).content.decode("utf-8", "ignore").replace("\0", ""))
 
     teachers = raw["자료446"]
     subjects = raw["자료492"]
@@ -129,7 +112,6 @@ def fetch_week(base, code, r):
         "week_start": norm_start(raw.get("시작일", "")) or raw.get("시작일", ""),
         "week_label": raw.get("시작일", ""),
         "live_weeks": weeks,
-        "semester_start": norm_start(raw.get("학기시작일자", "")) or raw.get("학기시작일자", ""),
     }
 
 
@@ -157,39 +139,6 @@ def main():
         with open(os.path.join(DATA_DIR, f"{code}_{st}.json"), "w", encoding="utf-8") as f:
             json.dump(snap, f, ensure_ascii=False)
         print("저장:", st, lab)
-
-    # ---- 미래 주차를 '기본시간표'로 확장 (컴시간 뷰어가 미래주를 표준표로 보여주는 것과 동일) ----
-    sem_start = first.get("semester_start") or "0000-00-00"
-
-    def _total(d):
-        return sum(len(v) for v in d["per_teacher"].values())
-
-    base_data, base_n = None, -1          # 이번 학기 저장분 중 수업 최다 = 표준표
-    for path in glob.glob(os.path.join(DATA_DIR, f"{code}_*.json")):
-        m = re.search(rf"{code}_(\d{{4}}-\d{{2}}-\d{{2}})\.json$", os.path.basename(path))
-        if not m or m.group(1) < sem_start:
-            continue
-        try:
-            d = json.load(open(path, encoding="utf-8"))
-        except Exception:
-            continue
-        if _total(d) > base_n:
-            base_n, base_data = _total(d), d
-
-    if base_data and live:
-        last_live = max(live.keys())
-        last = date.fromisoformat(last_live)
-        for k in range(1, 7):             # 향후 6주(약 한 달 반)
-            wd = last + timedelta(weeks=k)
-            st = wd.isoformat()
-            end = wd + timedelta(days=5)
-            lab = f"{wd.strftime('%y-%m-%d')} ~ {end.strftime('%y-%m-%d')} · 기본시간표"
-            snap = {kk: base_data[kk] for kk in ("teachers", "per_teacher", "period_times", "max_period")}
-            snap["week_start"] = st
-            snap["week_label"] = lab
-            with open(os.path.join(DATA_DIR, f"{code}_{st}.json"), "w", encoding="utf-8") as f:
-                json.dump(snap, f, ensure_ascii=False)
-        print(f"미래 기본시간표 6주 생성 (기준 {base_n}시간)")
 
     # index.json 재구성 (기존 파일 = 지난 기록 유지)
     weeks = []

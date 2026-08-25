@@ -209,10 +209,7 @@ async function boot(){
   code=idx.school.code; schoolName=idx.school.name;
   document.title=schoolName+' 교사 시간표';
   $('#week').innerHTML=idx.weeks.map(w=>{
-    let tag;
-    if(w.start===idx.current) tag='이번주';
-    else if(w.start<idx.current) tag='지난 기록';
-    else tag=(w.label&&w.label.includes('기본시간표'))?'예정':'다음주';
+    const tag = w.start===idx.current?'이번주':(w.start>idx.current?'다음주':'지난 기록');
     return `<option value="${w.start}" ${w.start===idx.current?'selected':''}>${w.label||w.start}  [${tag}]</option>`;
   }).join('');
   await loadWeek();

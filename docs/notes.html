@@ -433,7 +433,6 @@
   <div class="brand"><span class="logo">✎</span><span>수연노트</span></div>
   <div class="lib-search-wrap"><input id="libSearch" class="lib-search" type="search" placeholder="노트 검색" autocomplete="off" enterkeyhint="search"></div>
   <button class="install-btn hidden" id="installBtn" title="앱으로 설치">⤓ 앱 설치</button>
-  <button class="tbtn" id="ttOpenBtn" title="시간표">📅</button>
   <button class="tbtn" id="backupBtn" title="백업/기기 간 이동">⇅</button>
   <button class="tbtn" id="themeBtn" title="테마">◐</button>
 </div>
@@ -1241,7 +1240,11 @@ function tplThumb(tpl, cv, paper){
 let openTabs = Array.isArray(db.openTabs)? db.openTabs.slice() : [];
 function open(n){
   commitText();
-  nb=n; pi=0; page=nb.pages[0];
+  nb=n;
+  // 마지막으로 보던 쪽으로 복원 (그 쪽이 지워졌으면 1쪽)
+  const li=n.lastPageId ? n.pages.findIndex(p=>p.id===n.lastPageId) : -1;
+  pi = li>=0 ? li : 0;
+  page=nb.pages[pi];
   n.pages.forEach(loadBgImage);   // PDF 배경 미리 불러오기(썸네일·내보내기 대비)
   if(!openTabs.includes(n.id)) openTabs.push(n.id);
   db.openTabs=openTabs; save();
@@ -2718,6 +2721,7 @@ function refreshPageUI(){
 function gotoPage(i){
   commitSuspended(); commitText(); clearSelection(); clearTextSel(); clearImgSel();
   pi=clamp(i,0,nb.pages.length-1); page=nb.pages[pi];
+  if(nb.lastPageId!==page.id){ nb.lastPageId=page.id; dirtyNbs.add(nb.id); save(); }   // 보던 쪽 기억
   refreshPageUI(); fitPage(); scheduleRender();
   document.querySelectorAll('#plist .thumb').forEach((t,k)=>t.classList.toggle('on',k===pi));
 }
@@ -2777,8 +2781,6 @@ $('#menuBtn').onclick=()=>{
     <div class="div"></div>
     <button data-a="photo"><span class="ic">📷</span> 사진 넣기</button>
     <div class="div"></div>
-    <button data-a="timetable"><span class="ic">📅</span> 시간표 보기</button>
-    <div class="div"></div>
     <button data-a="png"><span class="ic">🖼️</span> 이 페이지 PNG 저장</button>
     <button data-a="pdf"><span class="ic">📄</span> 전체 PDF로 인쇄</button>
     <div class="div"></div>
@@ -2793,7 +2795,6 @@ $('#menuBtn').onclick=()=>{
     else if(a==='png') exportPNG();
     else if(a==='pdf') exportPDF();
     else if(a==='photo'){ $('#imgFile').click(); }
-    else if(a==='timetable'){ window.openTimetable&&window.openTimetable(); }
     else if(a==='clear'){ if(confirm('이 페이지의 필기를 모두 지울까요?')){ const s=page.strokes.slice(),tx=page.texts.slice(),im=(page.images||[]).slice();
         if(s.length||tx.length||im.length){ clearImgSel(); page.strokes=[]; page.texts=[]; page.images=[]; pushUndo({t:'clearpage',strokes:s,texts:tx,images:im}); scheduleRender(); } } }
   };
@@ -3139,184 +3140,6 @@ if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   });
   $('#iosOk')?.addEventListener('click',()=>sheet.classList.remove('show'));
   sheet?.addEventListener('click',e=>{ if(e.target===sheet) sheet.classList.remove('show'); });
-})();
-</script>
-
-<!-- ===== 시간표 보기 (comci-timetable 연동 · 독립 모듈) ===== -->
-<style>
-  #ttWrap{position:fixed;inset:0;z-index:9000;display:none}
-  #ttWrap.show{display:block}
-  #ttBd{position:absolute;inset:0;background:rgba(8,12,18,.45)}
-  #ttPanel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:min(880px,94vw);max-height:90vh;display:flex;flex-direction:column;
-    background:var(--panel);color:var(--ink);border:1px solid var(--line);
-    border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);overflow:hidden}
-  #ttHead{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--panel2)}
-  #ttHead b{font-size:15px}
-  #ttHead .sp{margin-left:auto}
-  #ttWrap button.ttb{border:1px solid var(--line);background:var(--panel);color:var(--ink);
-    border-radius:9px;padding:6px 11px;font-size:13px;cursor:pointer}
-  #ttWrap button.ttb:hover{background:var(--panel2)}
-  #ttCtl{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}
-  #ttWrap select{padding:7px 9px;border:1px solid var(--line);border-radius:9px;
-    background:var(--panel);color:var(--ink);font-size:13px;max-width:100%}
-  #ttBody{padding:12px 14px;overflow:auto}
-  #ttMeta{color:var(--muted);font-size:12px;margin:0 0 8px}
-  #ttWrap table{border-collapse:collapse;width:100%;font-size:13px}
-  #ttWrap th,#ttWrap td{border:1px solid var(--line);padding:6px 4px;text-align:center;height:46px;vertical-align:middle}
-  #ttWrap thead th{background:var(--panel2);font-weight:600}
-  #ttWrap thead th.today{color:var(--accent)}
-  #ttWrap td.p{background:var(--panel2);font-weight:600;width:56px;white-space:nowrap}
-  #ttWrap td.p small{display:block;font-weight:400;color:var(--muted);font-size:10px}
-  #ttWrap td .c{font-weight:700;color:var(--accent)}
-  #ttWrap td .s{display:block;color:var(--muted);font-size:11px;margin-top:1px}
-  #ttWrap td.e{color:var(--line)}
-  #ttWrap td.chg{background:rgba(225,29,72,.10)}
-  #ttWrap td.chg .c{color:#e11d48}
-  #ttNote{padding:0 14px 12px;color:var(--muted);font-size:11px;line-height:1.5}
-  @media (max-width:560px){
-    #ttPanel{width:100vw;height:100vh;max-height:100vh;border-radius:0;left:0;top:0;transform:none}
-    #ttWrap th,#ttWrap td{font-size:11px;height:42px;padding:4px 2px}
-    #ttWrap td.p{width:44px}
-    #ttWrap td .s{font-size:10px}
-    #ttCtl select{flex:1;min-width:0}
-  }
-</style>
-<div id="ttWrap" aria-hidden="true">
-  <div id="ttBd"></div>
-  <div id="ttPanel" role="dialog" aria-label="시간표">
-    <div id="ttHead"><b>📅 시간표</b><span class="sp"></span>
-      <button class="ttb" id="ttReload" title="새로고침">↻</button>
-      <button class="ttb" id="ttClose">닫기</button></div>
-    <div id="ttCtl"><select id="ttWeek"></select><select id="ttTeacher"></select></div>
-    <div id="ttBody"><p id="ttMeta">불러오는 중…</p><div id="ttGrid"></div></div>
-    <div id="ttNote"></div>
-  </div>
-</div>
-<script>
-(function(){
-  "use strict";
-  const SRC='https://woorimalsam-lab.github.io/comci-timetable/data/';  // 시간표 저장소(같은 계정)
-  const DAYS=['월','화','수','목','금'];
-  const LS_T='tt_teacher', LS_CACHE='tt_cache_v1';
-  const qs=s=>document.querySelector(s);
-  const z=n=>String(n).padStart(2,'0');
-  let idx=null, cur=null, booted=false;
-
-  function thisMonday(){
-    const d=new Date(); const dow=(d.getDay()+6)%7;
-    d.setHours(0,0,0,0); d.setDate(d.getDate()-dow);
-    return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
-  }
-  function pickWeek(weeks,today){
-    if(!weeks||!weeks.length) return null;
-    const ex=weeks.find(w=>w.start===today); if(ex) return ex.start;
-    const past=weeks.filter(w=>w.start<today).map(w=>w.start).sort();
-    if(past.length) return past[past.length-1];
-    return weeks.map(w=>w.start).sort()[0];
-  }
-  /* 오프라인 대비 캐시 */
-  const cache={
-    all(){ try{ return JSON.parse(localStorage.getItem(LS_CACHE)||'{}'); }catch(e){ return {}; } },
-    get(k){ return this.all()[k]; },
-    put(k,v){ try{ const c=this.all(); c[k]=v; localStorage.setItem(LS_CACHE,JSON.stringify(c)); }catch(e){} }
-  };
-  async function getJSON(name){
-    try{
-      const r=await fetch(SRC+name+'?t='+Date.now(),{cache:'no-store'});
-      if(!r.ok) throw new Error('http '+r.status);
-      const j=await r.json(); cache.put(name,j);
-      return {data:j, fresh:true};
-    }catch(e){
-      const c=cache.get(name);
-      if(c) return {data:c, fresh:false};
-      throw e;
-    }
-  }
-
-  async function loadIndex(){
-    const {data,fresh}=await getJSON('index.json');
-    idx=data;
-    const today=thisMonday();
-    const nx=new Date(today+'T00:00:00'); nx.setDate(nx.getDate()+7);
-    const nextMon=`${nx.getFullYear()}-${z(nx.getMonth()+1)}-${z(nx.getDate())}`;
-    const sel=pickWeek(idx.weeks,today);
-    qs('#ttWeek').innerHTML=idx.weeks.map(w=>{
-      let tag;
-      if(w.start===today) tag='이번주';
-      else if(w.start===nextMon) tag='다음주';
-      else if(w.start<today) tag='지난 기록';
-      else tag='예정';
-      return `<option value="${w.start}"${w.start===sel?' selected':''}>${w.label||w.start} [${tag}]</option>`;
-    }).join('');
-    return fresh;
-  }
-  async function loadWeek(){
-    const st=qs('#ttWeek').value;
-    const {data,fresh}=await getJSON(`${idx.school.code}_${st}.json`);
-    cur=data;
-    const keep=localStorage.getItem(LS_T)||'김수*';
-    qs('#ttTeacher').innerHTML=cur.teachers.map(t=>`<option value="${t.idx}">${t.name}</option>`).join('');
-    const hit=cur.teachers.find(t=>t.name===keep);
-    if(hit) qs('#ttTeacher').value=hit.idx;
-    render(fresh);
-  }
-  function render(fresh){
-    if(!cur) return;
-    const tidx=qs('#ttTeacher').value;
-    const name=cur.teachers.find(t=>String(t.idx)===String(tidx))?.name||'';
-    if(name) localStorage.setItem(LS_T,name);
-    const list=cur.per_teacher[tidx]||[];
-    const map={}; list.forEach(e=>{ map[e.day+'_'+e.period]=e; });
-    const maxP=Math.max(6,(cur.max_period||5)+1);
-    const times=cur.period_times||[];
-    const todayDow=(new Date().getDay()+6)%7;      // 오늘 요일 강조
-    let h='<table><thead><tr><th></th>'+DAYS.map((d,i)=>
-      `<th class="${i===todayDow?'today':''}">${d}</th>`).join('')+'</tr></thead><tbody>';
-    for(let p=0;p<maxP;p++){
-      h+=`<tr><td class="p">${p+1}<small>${times[p]||''}</small></td>`;
-      for(let d=0;d<5;d++){
-        const c=map[d+'_'+p];
-        h+= c ? `<td class="${c.changed?'chg':''}"><span class="c">${c.cls}</span><span class="s">${c.sub||''}</span></td>`
-              : '<td class="e">·</td>';
-      }
-      h+='</tr>';
-    }
-    qs('#ttGrid').innerHTML=h+'</tbody></table>';
-    qs('#ttMeta').textContent=`${idx.school.name} · ${cur.week_label||''} · ${name} · 주당 ${list.length}시간`;
-    qs('#ttNote').innerHTML='· 컴시간에서 자동 수집된 자료입니다. "기본시간표"로 표시된 주는 학기 표준 시간표(예정)입니다.'+
-      (fresh?'':'<br>· ⚠ 지금은 인터넷에 연결되지 않아 <b>저장된 자료</b>를 보고 있습니다.');
-  }
-
-  function open(){
-    qs('#ttWrap').classList.add('show');
-    qs('#ttWrap').setAttribute('aria-hidden','false');
-    if(!booted){ booted=true; refresh(); }
-  }
-  function close(){
-    qs('#ttWrap').classList.remove('show');
-    qs('#ttWrap').setAttribute('aria-hidden','true');
-  }
-  async function refresh(){
-    qs('#ttMeta').textContent='불러오는 중…'; qs('#ttGrid').innerHTML=''; qs('#ttNote').textContent='';
-    try{ await loadIndex(); await loadWeek(); }
-    catch(e){
-      qs('#ttMeta').textContent='시간표를 불러오지 못했습니다.';
-      qs('#ttNote').innerHTML='· 인터넷 연결을 확인해 주세요. 한 번이라도 불러온 적이 있으면 오프라인에서도 볼 수 있습니다.';
-    }
-  }
-
-  qs('#ttClose').onclick=close;
-  qs('#ttBd').onclick=close;
-  const openBtn=qs('#ttOpenBtn'); if(openBtn) openBtn.onclick=open;   // 서재 화면에서 바로 열기
-  qs('#ttReload').onclick=refresh;
-  qs('#ttWeek').onchange=()=>loadWeek().catch(()=>{});
-  qs('#ttTeacher').onchange=()=>render(true);
-  document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'&&qs('#ttWrap').classList.contains('show')){ e.stopPropagation(); close(); }
-  },true);
-
-  window.openTimetable=open;
 })();
 </script>
 </body></html>
