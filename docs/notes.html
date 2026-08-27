@@ -2782,6 +2782,8 @@ $('#menuBtn').onclick=()=>{
     <div class="div"></div>
     <button data-a="photo"><span class="ic">📷</span> 사진 넣기</button>
     <div class="div"></div>
+    <button data-a="timetable"><span class="ic">📅</span> 시간표 보기</button>
+    <div class="div"></div>
     <button data-a="png"><span class="ic">🖼️</span> 이 페이지 PNG 저장</button>
     <button data-a="pdf"><span class="ic">📄</span> 전체 PDF로 인쇄</button>
     <div class="div"></div>
@@ -2796,6 +2798,7 @@ $('#menuBtn').onclick=()=>{
     else if(a==='png') exportPNG();
     else if(a==='pdf') exportPDF();
     else if(a==='photo'){ $('#imgFile').click(); }
+    else if(a==='timetable'){ window.ComciTimetable&&window.ComciTimetable.open(); }
     else if(a==='clear'){ if(confirm('이 페이지의 필기를 모두 지울까요?')){ const s=page.strokes.slice(),tx=page.texts.slice(),im=(page.images||[]).slice();
         if(s.length||tx.length||im.length){ clearImgSel(); page.strokes=[]; page.texts=[]; page.images=[]; pushUndo({t:'clearpage',strokes:s,texts:tx,images:im}); scheduleRender(); } } }
   };
@@ -3149,4 +3152,5 @@ if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   sheet?.addEventListener('click',e=>{ if(e.target===sheet) sheet.classList.remove('show'); });
 })();
 </script>
+<script src="https://woorimalsam-lab.github.io/comci-timetable/widget.js" data-teacher="김수*" data-mount="#libbar" data-fab="0" defer></script>
 </body></html>

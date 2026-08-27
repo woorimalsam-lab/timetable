@@ -27,6 +27,7 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;          // 외부 요청은 그대로
+  if (url.pathname.startsWith('/comci-timetable/')) return; // 시간표 자료는 항상 최신(네트워크)
 
   // 앱 본체(notes.html·내비게이션): 네트워크 우선 → 항상 최신 버전 실행, 오프라인일 때만 캐시
   const isHTML = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
