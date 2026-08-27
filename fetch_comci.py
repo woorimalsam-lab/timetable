@@ -13,7 +13,14 @@ from base64 import b64encode
 import requests
 from bs4 import BeautifulSoup
 
-COMCI_URL = "http://222.106.100.23:4082"
+# 컴시간 서버 주소는 수시로 바뀐다(예전 하드코딩 IP 222.106.100.23은 접속 불가).
+# 도메인을 우선 시도하고, 실패하면 다음 후보로 넘어간다. COMCI_URL 환경변수로 지정도 가능.
+COMCI_CANDIDATES = [u for u in [
+    os.environ.get("COMCI_URL", "").strip(),
+    "http://comci.net:4082",
+    "http://comci.kr:4082",
+    "http://222.106.100.23:4082",
+] if u]
 SCHOOL_QUERY = "심원고"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "docs", "data")
@@ -21,16 +28,25 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 
 def load_base():
-    r = requests.get(f"{COMCI_URL}/st", timeout=20)
-    r.encoding = "EUC-KR"
-    script = BeautifulSoup(r.text, "lxml").find_all("script")[1].contents[0]
-    route = re.search(r"\./\d+\?\d+l", script).group(0)
-    prefix = re.search(r"'\d+_'", script).group(0)[1:-1]
-    return {
-        "prefix": prefix,
-        "baseurl": f"{COMCI_URL}{route[1:8]}",
-        "searchurl": f"{COMCI_URL}{route[1:8]}{route[8:]}",
-    }
+    """접속 가능한 컴시간 서버를 찾아 기본 경로 정보를 만든다."""
+    errors = []
+    for comci_url in COMCI_CANDIDATES:
+        try:
+            r = requests.get(f"{comci_url}/st", timeout=20)
+            r.encoding = "EUC-KR"
+            script = BeautifulSoup(r.text, "lxml").find_all("script")[1].contents[0]
+            route = re.search(r"\./\d+\?\d+l", script).group(0)
+            prefix = re.search(r"'\d+_'", script).group(0)[1:-1]
+        except Exception as e:                       # 접속 실패/구조 변경 → 다음 후보
+            errors.append(f"{comci_url}: {type(e).__name__} {e}")
+            continue
+        print(f"[컴시간] 서버 연결됨: {comci_url}")
+        return {
+            "prefix": prefix,
+            "baseurl": f"{comci_url}{route[1:8]}",
+            "searchurl": f"{comci_url}{route[1:8]}{route[8:]}",
+        }
+    raise RuntimeError("컴시간 서버에 연결할 수 없습니다: " + " | ".join(errors))
 
 
 def find_school(base):
