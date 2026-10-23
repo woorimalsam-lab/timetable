@@ -331,11 +331,15 @@
   .gnsep{width:1px;height:26px;background:rgba(255,255,255,.25);margin:0 5px;flex:0 0 auto}
   .gngrow{flex:1;min-width:6px}
 
-  .gnsub{display:flex;align-items:center;gap:8px;height:46px;padding:0 12px;
+  .gnsub{display:flex;align-items:center;gap:8px;height:46px;padding:0 12px;position:relative;z-index:30;
          background:color-mix(in srgb,var(--panel) 65%,var(--panel2));
-         border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;
+         border-bottom:1px solid var(--line);
          backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-  .gnsub::-webkit-scrollbar{display:none}
+  .gnsubscroll{flex:1 1 auto;min-width:0;height:100%;display:flex;align-items:center;gap:8px;
+               overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .gnsubscroll::-webkit-scrollbar{display:none}
+  .gnsubscroll.more{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);
+                    mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}
   .undopill{display:flex;background:var(--panel);border-radius:12px;box-shadow:var(--shadow-sm);overflow:hidden;flex:0 0 auto}
   .undopill button{width:42px;height:34px;color:var(--ink);font-size:17px;display:flex;align-items:center;justify-content:center;transition:background .12s}
   .undopill button:hover{background:var(--panel2)}
@@ -346,21 +350,24 @@
   .gnz:hover{background:var(--panel)}
   .gnz:disabled{opacity:.25;cursor:default}
   .gnz.zlabel{font-weight:700;font-size:13px;color:var(--muted);min-width:52px;font-variant-numeric:tabular-nums}
-  .gnz.pgind{color:var(--ink);background:var(--panel2)}
 
-  /* 쪽 번호로 이동 */
-  .pagejump{position:fixed;z-index:46;background:var(--panel);border:1px solid var(--line);border-radius:16px;
-            box-shadow:var(--shadow);padding:14px;width:236px}
-  .pagejump h4{margin:0 0 10px;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px}
-  .pagejump .pjrow{display:flex;align-items:center;gap:8px}
-  .pagejump input{flex:1;min-width:0;height:42px;border:1.5px solid var(--line);border-radius:11px;background:var(--panel2);
-                  color:var(--ink);font-size:20px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;outline:0}
-  .pagejump input:focus{border-color:var(--accent)}
-  .pagejump .pjtot{font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
-  .pagejump .pjgo{height:42px;padding:0 16px;border-radius:11px;background:var(--accent);color:#fff;font-size:14px;font-weight:700}
-  .pagejump .pjquick{display:flex;gap:6px;margin-top:10px}
-  .pagejump .pjquick button{flex:1;height:32px;border-radius:9px;background:var(--panel2);font-size:12px;font-weight:600;color:var(--ink)}
-  .pagejump .pjmsg{min-height:16px;margin-top:8px;font-size:12px;color:var(--danger)}
+  /* 쪽 번호 칸: "[ 3 ] / 30" — 칸을 눌러 번호를 쓰면 그 쪽으로 이동 */
+  .gnpg{display:flex;align-items:center;gap:2px;flex:0 0 auto}
+  .gnpg .gnz{min-width:30px;padding:0 4px;font-size:17px}
+  .pgwrap{position:relative;display:flex}
+  .pgbox{display:flex;align-items:center;gap:5px;cursor:text;padding:0 2px}
+  .pgbox input{width:46px;height:34px;padding:0 4px;border:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);border-radius:9px;
+               background:var(--panel);color:var(--ink);font:700 16px/1 inherit;font-family:inherit;text-align:center;
+               font-variant-numeric:tabular-nums;outline:0;-webkit-appearance:none;appearance:none;
+               -webkit-user-select:text;user-select:text;transition:border-color .12s,box-shadow .12s}
+  .pgbox input.w3{width:56px}
+  .pgbox input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+  .pgbox input::placeholder{color:var(--muted);opacity:.7}
+  .pgbox .pgtot{font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* 입력 중에만 칸 바로 아래에 뜨는 '이동' 버튼 (툴바 폭이 바뀌지 않도록 겹쳐서 표시) */
+  .pggo{position:absolute;top:calc(100% + 7px);left:0;z-index:31;height:36px;padding:0 16px;border-radius:10px;
+        background:var(--accent);color:#fff;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:var(--shadow)}
+  .pggo[hidden]{display:none}
 
   /* 드롭다운 메뉴 */
   .menu{position:absolute;top:100px;right:12px;z-index:40;
@@ -502,20 +509,32 @@
 
   <!-- 보조 바: 실행취소 + 도구 옵션 + 줌 -->
   <div class="gnsub">
-    <span class="undopill"><button id="undoBtn" title="실행 취소">↺</button><button id="redoBtn" title="다시 실행">↻</button></span>
-    <span class="gnsep2 tool-only"></span>
-    <div class="colors" id="colors"></div>
-    <span class="gnsep2 tool-only" id="sizeSep"></span>
-    <div class="sizes" id="sizes"></div>
-    <span class="gngrow"></span>
-    <button class="gnz" id="pgPrev" title="이전 쪽">‹</button>
-    <button class="gnz zlabel pgind" id="pageInd" title="쪽 번호로 이동">1 / 1</button>
-    <button class="gnz" id="pgNext" title="다음 쪽">›</button>
+    <!-- 화면이 좁으면 이 부분만 옆으로 밀림(오른쪽 끝이 흐려지며 더 있다는 표시) -->
+    <div class="gnsubscroll" id="gnsubscroll">
+      <span class="undopill"><button id="undoBtn" title="실행 취소">↺</button><button id="redoBtn" title="다시 실행">↻</button></span>
+      <span class="gnsep2 tool-only"></span>
+      <div class="colors" id="colors"></div>
+      <span class="gnsep2 tool-only" id="sizeSep"></span>
+      <div class="sizes" id="sizes"></div>
+      <span class="gngrow"></span>
+      <div class="zoomg2">
+        <button class="gnz" id="zoomOut" title="축소">－</button>
+        <button class="gnz zlabel" id="zoomLabel" title="화면 맞춤">100%</button>
+        <button class="gnz" id="zoomIn" title="확대">＋</button>
+      </div>
+    </div>
     <span class="gnsep2"></span>
-    <div class="zoomg2">
-      <button class="gnz" id="zoomOut" title="축소">－</button>
-      <button class="gnz zlabel" id="zoomLabel" title="화면 맞춤">100%</button>
-      <button class="gnz" id="zoomIn" title="확대">＋</button>
+    <!-- 쪽 이동: 항상 보이는 자리. 숫자 칸을 눌러 번호를 쓰면 그 쪽으로 이동 -->
+    <div class="gnpg">
+      <button class="gnz" id="pgPrev" title="이전 쪽">‹</button>
+      <span class="pgwrap">
+        <label class="pgbox" id="pageInd">
+          <input id="pageNum" type="text" inputmode="numeric" enterkeyhint="go" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" maxlength="6" value="1" aria-label="쪽 번호 — 번호를 입력하면 그 쪽으로 이동">
+          <span class="pgtot" id="pageTot">/ 1</span>
+        </label>
+        <button class="pggo" id="pgGo" type="button" hidden>이동</button>
+      </span>
+      <button class="gnz" id="pgNext" title="다음 쪽">›</button>
     </div>
   </div>
 
@@ -564,7 +583,7 @@ const COVERS = ['#7b6cf0','#f48fb1','#4fc3f7','#4dd0a6','#ffb74d','#f2708a','#64
 /* ============================ 저장소 ============================ */
 // 노트는 IndexedDB(수백 MB 이상)에 저장. 과거 localStorage(약 5MB) 데이터는 최초 1회 자동 이전.
 // PDF 배경 이미지는 'bgs' 저장소에 페이지별 Blob으로 분리 → 노트 본문 JSON은 작게 유지.
-const APP_VERSION='2026-10-23a';   // 실행 중인 앱 버전(서재 하단 표시)
+const APP_VERSION='2026-10-23b';   // 실행 중인 앱 버전(서재 하단 표시)
 const DB_KEY='ssamnote_db_v2';
 let db = load();                 // 부팅 직후엔 localStorage(있다면)로 시작, initStorage()가 IDB로 교체
 let idb=null;
@@ -789,7 +808,9 @@ function loadBgImage(pg){
   let im=bgImgs.get(pg.id);
   if(!im){
     im=new Image(); bgImgs.set(pg.id,im);
-    im.onload=()=>{ staticValid=false; scheduleRender(); if($('#pages').classList.contains('open')) buildPageList();
+    im.onload=()=>{ staticValid=false; scheduleRender();
+      // 썸네일 패널이 열려 있으면 그 쪽 썸네일만 다시 그림 (쪽마다 목록 전체를 다시 만들면 큰 PDF에서 멈춤)
+      if($('#pages').classList.contains('open') && nb){ const k=nb.pages.indexOf(pg); if(k>=0) refreshThumb(k); }
       dispatchEvent(new CustomEvent('bgloaded',{detail:pg.id})); };   // 서재 PDF 표지 갱신용
     if(pg.bg) im.src=pg.bg;                                    // 구버전: dataURL 직접 보관
     else if(idb) idbGet('bgs',pg.bgId).then(bl=>{ if(bl) im.src=URL.createObjectURL(bl); }).catch(()=>{});
@@ -1269,7 +1290,10 @@ function open(n){
   clearSelection(); clearTextSel();
   buildColorBar(); buildSizeBar(); setTool(tool);
   renderTabs(); fitPage(); refreshPageUI();
+  if($('#pages').classList.contains('open')) buildPageList();   // 다른 노트로 바꿨을 때 이전 노트 썸네일이 남지 않게
   scheduleRender();
+  // 쪽이 많은 노트를 처음 열 때 한 번만: 쪽 번호 칸 사용법 안내
+  if(n.pages.length>=5 && !db.hintPageJump){ db.hintPageJump=1; save(); setTimeout(()=>toast('위의 쪽 번호 칸을 누르고 번호를 쓰면 그 쪽으로 바로 가요',4500),700); }
 }
 function closeEditor(){
   commitSuspended();
@@ -1329,7 +1353,11 @@ function setTool(t){
   if(t!=='text') commitText();
   closeToolPop();
   buildColorBar(); buildSizeBar();
+  updSubFade();
 }
+// 도구 옵션 줄이 화면보다 길면 오른쪽 끝을 흐리게 — 옆으로 밀면 더 있다는 표시
+function updSubFade(){ const sc=$('#gnsubscroll'); if(sc) sc.classList.toggle('more', sc.scrollWidth-sc.scrollLeft-sc.clientWidth>2); }
+$('#gnsubscroll').addEventListener('scroll',updSubFade,{passive:true});
 document.querySelectorAll('#toolset .rtool').forEach(b=>b.onclick=()=>{
   if(b.dataset.tool===tool){ toggleToolPop(b); }   // 이미 선택된 도구 재탭 → 옵션
   else setTool(b.dataset.tool);
@@ -1424,47 +1452,57 @@ $('#zoomOut').onclick=()=>zoomBy(0.8);
 $('#zoomLabel').onclick=fitPage;
 $('#pgPrev').onclick=()=>{ if(pi>0) gotoPage(pi-1); };
 $('#pgNext').onclick=()=>{ if(pi<nb.pages.length-1) gotoPage(pi+1); };
-$('#pageInd').onclick=()=>openPageJump();
 
-/* 쪽 번호를 입력해 바로 이동 (PDF 수업 자료 등 쪽수가 많을 때) */
-function closePageJump(){ $('#pagejump')?.remove(); $('#pjBackdrop')?.remove(); }
-function openPageJump(){
-  if($('#pagejump')){ closePageJump(); return; }
-  const total=nb.pages.length;
-  const bd=el('div','backdrop'); bd.id='pjBackdrop'; bd.style.position='fixed'; bd.style.zIndex='45'; bd.onclick=closePageJump;
-  document.body.appendChild(bd);
-  const box=el('div','pagejump'); box.id='pagejump';
-  box.innerHTML=`<h4>쪽 번호로 이동</h4>
-    <div class="pjrow">
-      <input id="pjInput" type="text" inputmode="numeric" pattern="[0-9]*" enterkeyhint="go" autocomplete="off" aria-label="이동할 쪽 번호" placeholder="${pi+1}">
-      <span class="pjtot">/ ${total}</span>
-      <button class="pjgo" id="pjGo">이동</button>
-    </div>
-    <div class="pjquick"><button data-p="1">첫 쪽</button><button data-p="${total}">마지막 쪽</button></div>
-    <div class="pjmsg" id="pjMsg"></div>`;
-  document.body.appendChild(box);
-  // 쪽 표시 버튼 바로 아래(화면 밖으로 나가지 않게)
-  const r=$('#pageInd').getBoundingClientRect(), bw=box.offsetWidth;
-  box.style.left=clamp(r.left+r.width/2-bw/2, 8, innerWidth-bw-8)+'px';
-  box.style.top=(r.bottom+8)+'px';
-  const inp=$('#pjInput'), msg=$('#pjMsg');
-  const go=v=>{
-    const n=parseInt(String(v).replace(/[^0-9]/g,''),10);
-    if(!n){ msg.textContent='쪽 번호를 입력해 주세요'; inp.focus(); return; }
-    if(n<1||n>total){ msg.textContent=`1 ~ ${total} 사이의 번호를 입력해 주세요`; inp.select(); return; }
-    closePageJump();
-    if(n-1!==pi) gotoPage(n-1);
-    toast(`${n}쪽으로 이동했어요`);
-  };
-  $('#pjGo').onclick=()=>go(inp.value);
-  box.querySelector('.pjquick').onclick=e=>{ const p=e.target.closest('button')?.dataset.p; if(p) go(p); };
-  inp.addEventListener('input',()=>{ inp.value=inp.value.replace(/[^0-9]/g,''); msg.textContent=''; });
-  inp.addEventListener('keydown',e=>{
-    if(e.key==='Enter'){ e.preventDefault(); go(inp.value); }
-    else if(e.key==='Escape'){ e.preventDefault(); closePageJump(); }
-  });
-  inp.focus();
+/* 쪽 번호 칸 — 숫자를 쓰고 '이동'(또는 키보드의 이동/Return)을 누르면 그 쪽으로 이동 */
+const pageNum=$('#pageNum'), pgGo=$('#pgGo');
+let _pgCancel=false, _pgPtrT=-1e9;
+// 손글씨(Scribble)로 쓴 숫자가 l·O 등으로 인식돼도 숫자로 바로잡음
+function parsePageNum(v){
+  v=String(v||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
+                  .replace(/[lI|!]/g,'1').replace(/[oO]/g,'0').replace(/[^0-9]/g,'');
+  return v ? parseInt(v,10) : 0;
 }
+function pageJumpTo(n){
+  const total=nb.pages.length;
+  if(n<1||n>total){ toast(`1 ~ ${total} 사이의 쪽 번호를 입력해 주세요`); return false; }
+  if(n-1!==pi) gotoPage(n-1);
+  return true;
+}
+function commitPageNum(){
+  const n=parsePageNum(pageNum.value);
+  if(!n){ _pgCancel=true; pageNum.blur(); return; }          // 빈 칸이면 그냥 닫기
+  if(!pageJumpTo(n)){ pageNum.value=''; return; }            // 범위 밖: 칸은 열어 둔 채 다시 입력
+  _pgCancel=true; pageNum.blur();
+}
+pageNum.addEventListener('focus',()=>{
+  _pgCancel=false; _pgPtrT=-1e9;
+  pageNum.placeholder=String(pi+1); pageNum.value='';         // 현재 쪽은 흐린 글씨로, 바로 새 번호를 쓸 수 있게
+  pgGo.hidden=false;
+});
+pageNum.addEventListener('blur',()=>{
+  pgGo.hidden=true;
+  // 번호를 쓰고 키보드만 내린 경우(다른 곳을 누르지 않음)에도 그 쪽으로 이동
+  const n=parsePageNum(pageNum.value);
+  const byTap=performance.now()-_pgPtrT<600;
+  if(!_pgCancel && !byTap && n && nb && document.visibilityState==='visible') pageJumpTo(n);
+  _pgCancel=false;
+  if(nb) pageNum.value=pi+1;
+});
+pageNum.addEventListener('keydown',e=>{
+  if(e.key==='Enter' && !e.isComposing){ e.preventDefault(); commitPageNum(); }
+  else if(e.key==='Escape'){ e.preventDefault(); _pgCancel=true; pageNum.blur(); }
+});
+// '이동' 버튼: 누르는 순간 칸이 닫히지 않도록 포커스를 유지하고, 손을 뗄 때 이동
+pgGo.addEventListener('pointerdown',e=>e.preventDefault());
+pgGo.addEventListener('mousedown',e=>e.preventDefault());
+pgGo.addEventListener('click',commitPageNum);
+// 칸 밖을 누르면(필기 화면 포함) 입력 취소 — 화면은 터치 기본동작을 막아 두어 저절로 닫히지 않으므로 직접 닫음
+addEventListener('pointerdown',e=>{
+  if(document.activeElement!==pageNum || e.target.closest?.('#pageInd,#pgGo')) return;
+  _pgPtrT=performance.now();
+  if(e.target===board){ _pgCancel=true; pageNum.blur(); }
+},true);
+
 const toPage = (sx,sy)=>({x:(sx-view.tx)/view.s, y:(sy-view.ty)/view.s});
 const toScreen=(px,py)=>({x:px*view.s+view.tx, y:py*view.s+view.ty});
 function clampView(){
@@ -2751,7 +2789,9 @@ function commitText(){
 function closeTextEditor(){ if(tedit){ const ta=tedit; tedit=null; teditText=null; teditNew=false; ta.removeEventListener('blur',commitText); ta.remove(); } }
 
 /* ============================ 페이지 패널 ============================ */
-$('#pagesBtn').onclick=()=>{ $('#pages').classList.toggle('open'); if($('#pages').classList.contains('open')) buildPageList(); };
+$('#pagesBtn').onclick=()=>{ placePagesPanel(); $('#pages').classList.toggle('open'); if($('#pages').classList.contains('open')) buildPageList(); };
+// 썸네일 패널을 툴바 아래부터 시작 (툴바의 쪽 이동·메뉴 버튼을 가리지 않게)
+function placePagesPanel(){ const p=$('#pages'), top=$('#stage').offsetTop; if(top>0){ p.style.top=top+'px'; p.style.paddingTop='0'; } }
 $('#pagesClose').onclick=()=>$('#pages').classList.remove('open');
 function addPageAfter(){ const p=newPage(page.template, page.paper); nb.pages.splice(pi+1,0,p); gotoPage(pi+1); buildPageList();
   dirtyNbs.add(nb.id); dirtyPgs.add(p.id); markDirty(); saveNow(); }   // 구조 변경은 즉시 저장
@@ -2770,7 +2810,10 @@ $('#exportBtn').onclick=()=>{
 };
 
 function refreshPageUI(){
-  $('#pageInd').textContent=`${pi+1} / ${nb.pages.length}`;
+  if(document.activeElement!==pageNum) pageNum.value=pi+1;    // 입력 중인 번호는 덮어쓰지 않음
+  else pageNum.placeholder=String(pi+1);
+  $('#pageTot').textContent=`/ ${nb.pages.length}`;
+  pageNum.classList.toggle('w3', nb.pages.length>=100);
   $('#pgPrev').disabled = pi<=0;
   $('#pgNext').disabled = pi>=nb.pages.length-1;
   updateUndoUI();
@@ -2781,6 +2824,7 @@ function gotoPage(i){
   if(nb.lastPageId!==page.id){ nb.lastPageId=page.id; dirtyNbs.add(nb.id); save(); }   // 보던 쪽 기억
   refreshPageUI(); fitPage(); scheduleRender();
   document.querySelectorAll('#plist .thumb').forEach((t,k)=>t.classList.toggle('on',k===pi));
+  if($('#pages').classList.contains('open')) document.querySelector('#plist .thumb.on')?.scrollIntoView({block:'nearest'});
 }
 function buildPageList(){
   const list=$('#plist'); list.innerHTML='';
@@ -3127,9 +3171,9 @@ function esc(s){ return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>
 function shade(hex,amt){ const n=parseInt(hex.slice(1),16); let r=(n>>16)+amt,g=((n>>8)&255)+amt,b=(n&255)+amt;
   r=clamp(r,0,255);g=clamp(g,0,255);b=clamp(b,0,255); return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
 let toastT;
-function toast(msg){ let t=$('.toast'); if(!t){t=el('div','toast'); stage.appendChild(t);}
+function toast(msg, ms=1600){ let t=$('.toast'); if(!t){t=el('div','toast'); stage.appendChild(t);}
   t.classList.remove('has-action'); t.textContent=msg; t.classList.add('show');
-  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1600); }
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),ms); }
 // 방금 한 동작을 바로 되돌리는 '취소' 버튼이 달린 알림 (입력·변환 직후)
 function toastUndo(msg, onUndo){
   let t=$('.toast'); if(!t){t=el('div','toast'); stage.appendChild(t);}
@@ -3155,8 +3199,86 @@ addEventListener('keydown',e=>{
   else if('123456789'.includes(e.key)&&!m){ const map={'1':'pen','2':'ballpen','3':'highlighter','4':'glow','5':'eraser','6':'shape','7':'lasso','8':'text','9':'pan'}; setTool(map[e.key]); }
 });
 
-addEventListener('resize',()=>{ if(!$('#editor').classList.contains('hidden')){ scheduleRender(); } });
+addEventListener('resize',()=>{ if(!$('#editor').classList.contains('hidden')){ scheduleRender(); updSubFade(); placePagesPanel(); } });
 addEventListener('beforeunload',saveNow);
+
+/* ============================ 새 버전 자동 적용 ============================ */
+// 홈 화면 앱은 다시 열어도 '이어서 실행'될 뿐 새로 불러오지 않아 옛 버전이 계속 돌 수 있음.
+// 앱으로 돌아올 때마다 새 버전이 있는지 확인하고, 필기·입력 중이 아닐 때만 저장 후 새로고침 → 보던 노트·쪽으로 복귀.
+const UPD_RESUME='ssamnote_upd_resume', UPD_TRY='ssamnote_upd_try';
+let _lastInputT=0, _updChecking=false, _updPending=null, _busyJobs=0, _pickerT=-1e9;
+addEventListener('pointerdown',()=>{ _lastInputT=performance.now(); },true);
+addEventListener('keydown',()=>{ _lastInputT=performance.now(); },true);
+// 파일 고르는 창(PDF·사진·백업)이 떠 있는 동안에는 새로고침하지 않음
+['#pdfFile','#imgFile','#bakFile'].forEach(sel=>{ const f=$(sel); if(!f) return;
+  f.addEventListener('click',()=>{ _pickerT=performance.now(); });
+  f.addEventListener('change',()=>{ _pickerT=-1e9; }); });
+// 오래 걸리는 작업(PDF 가져오기·내보내기·백업) 중에도 새로고침하지 않음
+function _busyWrap(fn){ return async function(...a){ _busyJobs++; try{ return await fn.apply(this,a); } finally{ _busyJobs--; } }; }
+importPDF=_busyWrap(importPDF); exportPDFFile=_busyWrap(exportPDFFile);
+exportBackup=_busyWrap(exportBackup); importBackup=_busyWrap(importBackup);
+insertImageFile=_busyWrap(insertImageFile); duplicateNotebook=_busyWrap(duplicateNotebook);
+function _appBusy(){
+  if(activePid!=null||active||suspended||eraseBatch||lasso||selDrag||textDrag||textWResize||textDragSel||imgDrag||imgResize) return 'stroke';
+  if(pointers.size||nav.size||navPan||navPinch||cardDrag) return 'touch';
+  if(_penUpT && performance.now()-_penUpT<1500) return 'pen';
+  if(tedit) return 'text';
+  const ae=document.activeElement; if(ae&&ae.matches&&ae.matches('input,textarea,select,[contenteditable="true"]')) return 'input';
+  if(document.querySelector('.backdrop')) return 'popup';
+  if(_busyJobs>0 || performance.now()-_pickerT<60000) return 'job';
+  return '';
+}
+async function _latestVersion(){
+  // no-cache: 서버에 확인(바뀐 게 없으면 304로 가볍게) + 브라우저 캐시도 최신으로 갱신 → 새로고침 때 새 버전을 받음
+  const r=await fetch('notes.html',{cache:'no-cache'}); if(!r.ok) return null;
+  const m=(await r.text()).match(/const APP_VERSION='([^']+)'/); return m?m[1]:null;
+}
+async function checkForUpdate(){
+  if(_updChecking || _updPending || navigator.onLine===false) return;
+  const since=performance.now(); _updChecking=true;
+  try{
+    const v=await _latestVersion();
+    if(!v || !(v>APP_VERSION)) return;                // 'YYYY-MM-DDx' 형식: 더 최신일 때만 (옛 캐시로 되돌아가지 않게)
+    let t=null; try{ t=JSON.parse(localStorage.getItem(UPD_TRY)||'null'); }catch(e){}
+    if(t && t.v===v && Date.now()-t.t<10*60e3) return;   // 방금 시도했는데도 옛 버전이면 반복 새로고침 방지
+    _updPending=v; tryApplyUpdate(since);
+  }catch(e){} finally{ _updChecking=false; }
+}
+function tryApplyUpdate(since){
+  if(!_updPending || document.visibilityState!=='visible') return false;
+  if(_lastInputT>since || _appBusy()) return false;     // 그 사이 화면을 만졌거나 작업 중이면 다음에 돌아올 때 적용
+  applyUpdateNow(); return true;
+}
+function applyUpdateNow(){
+  try{ commitSuspended(); commitText(); }catch(e){}
+  saveNow();
+  try{
+    localStorage.setItem(UPD_TRY, JSON.stringify({v:_updPending, t:Date.now()}));
+    const inEditor=nb && !$('#editor').classList.contains('hidden');
+    localStorage.setItem(UPD_RESUME, JSON.stringify({nb:inEditor?nb.id:null, pg:inEditor&&page?page.id:null, from:APP_VERSION, t:Date.now()}));
+  }catch(e){}
+  const t0=Date.now();
+  (function wait(){ if((dirtyNbs.size||dirtyPgs.size) && Date.now()-t0<3000) return setTimeout(wait,100); location.reload(); })();   // 저장이 끝난 뒤 새로고침
+}
+function resumeAfterUpdate(){
+  let r=null; try{ r=JSON.parse(localStorage.getItem(UPD_RESUME)||'null'); localStorage.removeItem(UPD_RESUME); }catch(e){}
+  if(!r || Date.now()-r.t>2*60e3) return;
+  const n=r.nb && db.notebooks.find(x=>x.id===r.nb);
+  if(n){ if(r.pg && n.pages.some(p=>p.id===r.pg)) n.lastPageId=r.pg; open(n); }
+  if(r.from!==APP_VERSION) setTimeout(()=>toast(`새 버전으로 업데이트했어요 (v${APP_VERSION})`,2500),400);
+}
+addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible') return;
+  if(_updPending){ tryApplyUpdate(performance.now()); return; }
+  checkForUpdate();
+  navigator.serviceWorker?.getRegistration?.().then(reg=>reg&&reg.update()).catch(()=>{});
+});
+addEventListener('pageshow',e=>{ if(e.persisted) checkForUpdate(); });
+// 앱을 켜 둔 채 오래 쉬고 있을 때도 가끔 확인
+setInterval(()=>{
+  if(document.visibilityState!=='visible' || performance.now()-_lastInputT<5*60e3) return;
+  if(_updPending) tryApplyUpdate(-Infinity); else checkForUpdate();
+},15*60e3);
 
 /* ============================ 시작 ============================ */
 // IndexedDB에서 노트를 불러온 뒤 서재 표시 (db 객체가 교체되므로 설정도 다시 적용)
@@ -3165,7 +3287,9 @@ initStorage().catch(()=>{}).then(()=>{
   fingerDraw = db.fingerDraw===true;
   openTabs = Array.isArray(db.openTabs)? db.openTabs.slice() : [];
   renderLibrary();
+  resumeAfterUpdate();                    // 업데이트로 새로고침된 경우 보던 노트·쪽으로 복귀
   if(_recoveredPages) setTimeout(()=>toast(`저장되지 않았던 ${_recoveredPages}쪽을 복구했어요`),600);
+  if(location.protocol.startsWith('http')) setTimeout(checkForUpdate,3000);   // 옛 버전으로 켜졌으면 바로잡기
 });
 
 /* ============================ 앱 설치(PWA) — 오프라인 실행 ============================ */
@@ -3177,7 +3301,7 @@ if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   let _swReloaded=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(!_hadSW || _swReloaded) return; _swReloaded=true;
-    saveNow(); location.reload();
+    _updPending=_updPending||'sw'; tryApplyUpdate(-Infinity);   // 필기·입력 중이면 다음에 앱으로 돌아올 때 적용
   });
 }
 
