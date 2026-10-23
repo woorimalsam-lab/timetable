@@ -1,5 +1,5 @@
 /* 수연노트 서비스워커 — 앱 셸 캐시 (오프라인 실행) */
-const CACHE = 'ssamnote-v4';
+const CACHE = 'ssamnote-v5';
 const ASSETS = [
   './notes.html',
   './manifest.webmanifest',
@@ -32,8 +32,10 @@ self.addEventListener('fetch', e => {
   // 앱 본체(notes.html·내비게이션): 네트워크 우선 → 항상 최신 버전 실행, 오프라인일 때만 캐시
   const isHTML = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
   if (isHTML) {
+    // cache:'no-cache' — 브라우저 HTTP 캐시(최대 10분)에 남은 옛 버전을 쓰지 않고 서버에 확인(바뀐 게 없으면 304로 가볍게)
+    const fresh = new Request(req.url, { cache: 'no-cache', credentials: 'same-origin', redirect: req.redirect });
     e.respondWith(
-      fetch(req).then(res => {
+      fetch(fresh).then(res => {
         if (res && res.status === 200) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
         return res;
       }).catch(() => caches.match(req).then(c => c || caches.match('./notes.html')))
