@@ -415,7 +415,7 @@
              box-shadow:var(--shadow);padding:10px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px;width:216px}
   #txtcolpop .swatch{width:26px;height:26px}
 
-  .toast{position:absolute;bottom:84px;left:50%;transform:translateX(-50%);z-index:60;
+  .toast{position:fixed;bottom:calc(84px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);z-index:60;
          width:max-content;max-width:calc(100% - 32px);word-break:keep-all;text-align:center;
          background:rgba(26,31,40,.92);color:#eef2f7;padding:11px 18px;border-radius:999px;font-size:13px;font-weight:600;
          letter-spacing:-.1px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
@@ -759,7 +759,7 @@ let saveTimer=null;
 const dirtyNbs=new Set();     // 저장할 노트 껍데기 id
 const dirtyPgs=new Set();     // 저장할 페이지 id (변경된 페이지만 직렬화)
 function _writeDB(){
-  if(!idb){ try{ localStorage.setItem(DB_KEY,JSON.stringify(db,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v)); }catch(e){ toast('저장 공간이 부족합니다'); } return; }
+  if(!idb){ try{ localStorage.setItem(DB_KEY,JSON.stringify(db,(k,v)=>(k==='_undo'||k==='_redo')?undefined:v)); dirtyNbs.clear(); dirtyPgs.clear(); }catch(e){ toast('저장 공간이 부족합니다'); } return; }
   // 메타(노트 순서·설정)
   const meta=JSON.parse(JSON.stringify({...db, notebooks:undefined, order:db.notebooks.map(n=>n.id)}));
   journalPut('kv','meta',meta);
@@ -796,7 +796,10 @@ function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(_idleWrite,900); 
 function saveNow(){ clearTimeout(saveTimer); _writeDB(); }
 // iOS PWA는 beforeunload가 잘 안 오므로 화면 이탈 시점에 확실히 저장
 addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveNow(); });
-addEventListener('pagehide',saveNow);
+addEventListener('pagehide',()=>{   // 앱이 닫히거나 새로고침될 때 그리던 획·입력 중인 글도 저장
+  try{ commitSuspended(); if(active||activePid!=null) preemptActive(); commitText(); }catch(e){}
+  saveNow();
+});
 
 let _id = Date.now();
 const uid = ()=> (++_id).toString(36);
@@ -1305,7 +1308,8 @@ function open(n){
   if($('#pages').classList.contains('open')){ buildPageList(); scrollThumbIntoView(); }   // 다른 노트로 바꿨을 때 이전 노트 썸네일이 남지 않게
   scheduleRender();
   // 쪽이 많은 노트를 처음 열 때 한 번만: 쪽 번호 칸 사용법 안내
-  if(n.pages.length>=5 && !db.hintPageJump){ db.hintPageJump=1; save(); setTimeout(()=>toast('위의 쪽 번호 칸을 누르고 번호를 쓰면 그 쪽으로 바로 가요',4500),700); }
+  if(n.pages.length>=5 && !db.hintPageJump){ db.hintPageJump=1; save();
+    setTimeout(()=>{ if(nb===n && !$('#editor').classList.contains('hidden')) toastWhenIdle('위의 쪽 번호 칸을 누르고 번호를 쓰면 그 쪽으로 바로 가요',4500); },700); }
 }
 function closeEditor(){
   commitSuspended();
@@ -1519,11 +1523,19 @@ pgGo.addEventListener('pointerdown',e=>e.preventDefault());
 pgGo.addEventListener('mousedown',e=>e.preventDefault());
 pgGo.addEventListener('click',commitPageNum);
 // 칸 밖을 누르면(필기 화면 포함) 입력 취소 — 화면은 터치 기본동작을 막아 두어 저절로 닫히지 않으므로 직접 닫음
+let _pgTouch=null;   // 쪽 번호 입력 중 화면에 닿은 손가락 {id,t,x,y}
 addEventListener('pointerdown',e=>{
   if(document.activeElement!==pageNum || e.target.closest?.('#pageInd,#pgGo')) return;
+  if(e.target===board && e.pointerType==='touch'){ _pgTouch={id:e.pointerId,t:performance.now(),x:e.clientX,y:e.clientY}; return; }
   _pgPtrT=performance.now();
   if(e.target===board){ _pgCancel=true; pageNum.blur(); }
 },true);
+addEventListener('pointerup',e=>{
+  const s=_pgTouch; if(!s || e.pointerId!==s.id) return; _pgTouch=null;
+  if(document.activeElement!==pageNum) return;
+  if(performance.now()-s.t<400 && Math.hypot(e.clientX-s.x,e.clientY-s.y)<12){ _pgPtrT=performance.now(); _pgCancel=true; pageNum.blur(); }
+},true);
+addEventListener('pointercancel',e=>{ if(_pgTouch && e.pointerId===_pgTouch.id) _pgTouch=null; },true);
 
 const toPage = (sx,sy)=>({x:(sx-view.tx)/view.s, y:(sy-view.ty)/view.s});
 const toScreen=(px,py)=>({x:px*view.s+view.tx, y:py*view.s+view.ty});
@@ -2100,6 +2112,7 @@ function preemptActive(){
     else if(active.points.length){ finalizeStroke(active); page.strokes.push(active); pushUndo({t:'add',stroke:active}); }
   } else if(eraseBatch && eraseBatch.length){ pushUndo({t:'erase',strokes:eraseBatch}); }
   active=null; eraseBatch=null; lasso=null; selDrag=null; textDrag=null; textWResize=null; textDragSel=null;
+  if(activePid!=null) pointers.delete(activePid);
   activePid=null; scheduleRender();
 }
 function onDown(e){
@@ -2130,7 +2143,7 @@ function onDown(e){
 
   // 펜 필기 시작: 이미 등록된 손 이동 포인터(대개 화면에 얹힌 손바닥)는 해제 → 필기 중 화면 밀림 방지
   if(e.pointerType==='pen' && nav.size){
-    for(const id of [...nav.keys()]){ if(pointers.get(id)?.type==='touch'){ nav.delete(id); } }
+    for(const id of [...nav.keys()]){ if(pointers.get(id)?.type==='touch'){ nav.delete(id); pointers.delete(id); } }
     if(nav.size===0){ navPan=null; navPinch=null; }
   }
   // 강제 취소로 끊긴 획이 있으면: 같은 페이지·같은 도구·시간 내 재접촉 → 그 획을 이어서 그림
@@ -2812,7 +2825,11 @@ function closeTextEditor(){ if(tedit){ const ta=tedit; tedit=null; teditText=nul
 
 /* ============================ 페이지 패널 ============================ */
 $('#pagesBtn').onclick=()=>{ placePagesPanel(); $('#pages').classList.toggle('open'); if($('#pages').classList.contains('open')){ buildPageList(); scrollThumbIntoView(); } };
-function scrollThumbIntoView(){ document.querySelector('#plist .thumb.on')?.scrollIntoView({block:'nearest'}); }
+function scrollThumbIntoView(){   // 목록만 세로로 스크롤 (scrollIntoView는 열리는 중인 패널 때문에 화면 전체를 옆으로 밀어 버림)
+  const l=$('#plist'), t=l&&l.querySelector('.thumb.on'); if(!t) return;
+  const lr=l.getBoundingClientRect(), tr=t.getBoundingClientRect();
+  if(tr.top<lr.top) l.scrollTop+=tr.top-lr.top-12; else if(tr.bottom>lr.bottom) l.scrollTop+=tr.bottom-lr.bottom+12;
+}
 // 썸네일 패널을 툴바 아래부터 시작 (툴바의 쪽 이동·메뉴 버튼을 가리지 않게)
 function placePagesPanel(){ const p=$('#pages'), top=$('#stage').offsetTop; if(top>0){ p.style.top=top+'px'; p.style.paddingTop='0'; } }
 $('#pagesClose').onclick=()=>$('#pages').classList.remove('open');
@@ -3046,8 +3063,8 @@ async function importPDF(file){
     try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
     catch(e){ db.notebooks=db.notebooks.filter(x=>x!==nbNew); toast('PDF가 너무 커서 저장할 수 없어요 (쪽수가 적은 PDF로 시도해 보세요)'); return; }
   }
-  if(doc.numPages>cap) toast(`처음 ${cap}쪽만 가져왔어요 (${doc.numPages}쪽 중)`);
   renderLibrary(); open(nbNew);
+  if(doc.numPages>cap) toast(`처음 ${cap}쪽만 가져왔어요 (${doc.numPages}쪽 중)`,4000);
 }
 $('#pdfFile').addEventListener('change',e=>{
   const f=e.target.files&&e.target.files[0]; e.target.value='';
@@ -3194,12 +3211,14 @@ function esc(s){ return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>
 function shade(hex,amt){ const n=parseInt(hex.slice(1),16); let r=(n>>16)+amt,g=((n>>8)&255)+amt,b=(n&255)+amt;
   r=clamp(r,0,255);g=clamp(g,0,255);b=clamp(b,0,255); return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
 let toastT;
-function toast(msg, ms=1600){ let t=$('.toast'); if(!t){t=el('div','toast'); stage.appendChild(t);}
+function toast(msg, ms=1600){ let t=$('.toast'); if(!t){t=el('div','toast'); document.body.appendChild(t);}
   t.classList.remove('has-action'); t.textContent=msg; t.classList.add('show');
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),ms); }
 // 방금 한 동작을 바로 되돌리는 '취소' 버튼이 달린 알림 (입력·변환 직후)
+// 다른 알림이 떠 있으면 끝난 뒤에 표시 (사용법 안내가 중요한 알림을 덮지 않게)
+function toastWhenIdle(msg, ms){ const t=$('.toast'); if(t && t.classList.contains('show')) return setTimeout(()=>toastWhenIdle(msg,ms),300); toast(msg,ms); }
 function toastUndo(msg, onUndo){
-  let t=$('.toast'); if(!t){t=el('div','toast'); stage.appendChild(t);}
+  let t=$('.toast'); if(!t){t=el('div','toast'); document.body.appendChild(t);}
   t.textContent=''; t.classList.add('has-action','show');
   const span=el('span'); span.textContent=msg; t.appendChild(span);
   const btn=el('button','toast-undo'); btn.textContent='취소';
@@ -3230,8 +3249,13 @@ addEventListener('beforeunload',saveNow);
 // 앱으로 돌아올 때마다 새 버전이 있는지 확인하고, 필기·입력 중이 아닐 때만 저장 후 새로고침 → 보던 노트·쪽으로 복귀.
 const UPD_RESUME='ssamnote_upd_resume', UPD_TRY='ssamnote_upd_try';
 let _lastInputT=0, _updChecking=false, _updPending=null, _busyJobs=0, _pickerT=-1e9;
-addEventListener('pointerdown',()=>{ _lastInputT=performance.now(); },true);
-addEventListener('keydown',()=>{ _lastInputT=performance.now(); },true);
+let _updReloading=false;
+function _onUserInput(){
+  _lastInputT=performance.now();
+  if(_updReloading){ _updReloading=false; _updApplying=false; try{ window.stop(); localStorage.removeItem(UPD_RESUME); }catch(e){} }   // 다음에 돌아올 때 다시 적용
+}
+addEventListener('pointerdown',_onUserInput,true);
+addEventListener('keydown',_onUserInput,true);
 // 파일 고르는 창(PDF·사진·백업)이 떠 있는 동안에는 새로고침하지 않음
 ['#pdfFile','#imgFile','#bakFile'].forEach(sel=>{ const f=$(sel); if(!f) return;
   f.addEventListener('click',()=>{ _pickerT=performance.now(); });
@@ -3243,7 +3267,7 @@ exportBackup=_busyWrap(exportBackup); importBackup=_busyWrap(importBackup);
 insertImageFile=_busyWrap(insertImageFile); duplicateNotebook=_busyWrap(duplicateNotebook);
 function _appBusy(){
   if(activePid!=null||active||suspended||eraseBatch||lasso||selDrag||textDrag||textWResize||textDragSel||imgDrag||imgResize) return 'stroke';
-  if(pointers.size||nav.size||navPan||navPinch||cardDrag) return 'touch';
+  if(nav.size||navPan||navPinch||cardDrag) return 'touch';
   if(_penUpT && performance.now()-_penUpT<1500) return 'pen';
   if(tedit) return 'text';
   const ae=document.activeElement; if(ae&&ae.matches&&ae.matches('input,textarea,select,[contenteditable="true"]')) return 'input';
@@ -3264,7 +3288,8 @@ async function checkForUpdate(){
     if(!v || !(v>APP_VERSION)) return;                // 'YYYY-MM-DDx' 형식: 더 최신일 때만 (옛 캐시로 되돌아가지 않게)
     let t=null; try{ t=JSON.parse(localStorage.getItem(UPD_TRY)||'null'); }catch(e){}
     if(t && t.v===v && Date.now()-t.t<10*60e3) return;   // 방금 시도했는데도 옛 버전이면 반복 새로고침 방지
-    _updPending=v; tryApplyUpdate(since);
+    _updPending=v;
+    if(performance.now()-since<2000) tryApplyUpdate(since);   // 느린 와이파이로 오래 걸렸으면 다음에 앱으로 돌아올 때 적용
   }catch(e){} finally{ _updChecking=false; }
 }
 function tryApplyUpdate(since){
@@ -3286,24 +3311,31 @@ function applyUpdateNow(){
       localStorage.setItem(UPD_TRY, JSON.stringify({v:_updPending, t:Date.now()}));
       const inEditor=nb && !$('#editor').classList.contains('hidden');
       localStorage.setItem(UPD_RESUME, JSON.stringify({nb:inEditor?nb.id:null, pg:inEditor&&page?page.id:null, from:APP_VERSION, t:Date.now(),
-        tool, color, sizes:[penSize,ballSize,glowSize,hlSize,erSize], view:inEditor?{s:view.s/fitScale, tx:view.tx, ty:view.ty}:null}));
+        tool, color, sizes:[penSize,ballSize,glowSize,hlSize,erSize], shapeKind, shapeSize, folder:curFolder,
+        pages:!!(inEditor && $('#pages').classList.contains('open')),
+        view:inEditor?{s:view.s/fitScale, tx:view.tx, ty:view.ty}:null}));
     }catch(e){}
+    _updReloading=true;
     location.reload();
   })();
 }
 function resumeAfterUpdate(){
   let r=null; try{ r=JSON.parse(localStorage.getItem(UPD_RESUME)||'null'); localStorage.removeItem(UPD_RESUME); }catch(e){}
   if(!r || Date.now()-r.t>2*60e3) return;
-  // 쓰던 도구·색·굵기 그대로
-  if(typeof r.tool==='string' && r.tool) tool=r.tool;
-  if(typeof r.color==='string' && r.color) color=r.color;
-  if(Array.isArray(r.sizes) && r.sizes.length===5 && r.sizes.every(v=>typeof v==='number')) [penSize,ballSize,glowSize,hlSize,erSize]=r.sizes;
+  // 쓰던 도구·색·굵기 그대로 (이전 버전이 남긴 값이므로 지금 있는 것만 받아들임)
+  if(typeof r.tool==='string' && document.querySelector('#toolset .rtool[data-tool="'+CSS.escape(r.tool)+'"]')) tool=r.tool;
+  if(typeof r.color==='string' && /^#[0-9a-f]{6}$/i.test(r.color)) color=r.color;
+  if(Array.isArray(r.sizes) && r.sizes.length===5 && r.sizes.every(v=>Number.isFinite(v)&&v>0)) [penSize,ballSize,glowSize,hlSize,erSize]=r.sizes;
+  if(r.shapeKind in SHAPE_KO) shapeKind=r.shapeKind;
+  if(Number.isFinite(r.shapeSize) && r.shapeSize>0) shapeSize=r.shapeSize;
+  if(r.folder && (db.folders||[]).some(f=>f.id===r.folder)){ curFolder=r.folder; renderLibrary(); }
   const n=r.nb && db.notebooks.find(x=>x.id===r.nb);
   if(n){
     if(r.pg && n.pages.some(p=>p.id===r.pg)) n.lastPageId=r.pg;
     open(n);
     // 보던 확대·위치 그대로
     if(r.view && r.view.s>0){ view.s=r.view.s*fitScale; view.tx=r.view.tx; view.ty=r.view.ty; clampView(); updateZoom(); staticValid=false; scheduleRender(); }
+    if(r.pages){ placePagesPanel(); $('#pages').classList.add('open'); buildPageList(); scrollThumbIntoView(); }
   }
   if(r.from!==APP_VERSION) setTimeout(()=>toast(`새 버전으로 업데이트했어요 (v${APP_VERSION})`,2500),400);
 }
@@ -3330,7 +3362,7 @@ initStorage().catch(()=>{}).then(()=>{
 
 /* ============================ 앱 설치(PWA) — 오프라인 실행 ============================ */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
-  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(reg=>{ try{ reg.update(); }catch(e){} }).catch(()=>{}));
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(reg=>reg.update()).catch(()=>{}));
   // 서비스워커가 바뀌면 앱 버전도 바뀌었는지 한 번 확인 (처음 설치될 때는 이미 최신이므로 확인하지 않음)
   const _hadSW=!!navigator.serviceWorker.controller;
   let _swChecked=false;
