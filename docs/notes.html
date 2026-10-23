@@ -346,6 +346,21 @@
   .gnz:hover{background:var(--panel)}
   .gnz:disabled{opacity:.25;cursor:default}
   .gnz.zlabel{font-weight:700;font-size:13px;color:var(--muted);min-width:52px;font-variant-numeric:tabular-nums}
+  .gnz.pgind{color:var(--ink);background:var(--panel2)}
+
+  /* 쪽 번호로 이동 */
+  .pagejump{position:fixed;z-index:46;background:var(--panel);border:1px solid var(--line);border-radius:16px;
+            box-shadow:var(--shadow);padding:14px;width:236px}
+  .pagejump h4{margin:0 0 10px;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px}
+  .pagejump .pjrow{display:flex;align-items:center;gap:8px}
+  .pagejump input{flex:1;min-width:0;height:42px;border:1.5px solid var(--line);border-radius:11px;background:var(--panel2);
+                  color:var(--ink);font-size:20px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;outline:0}
+  .pagejump input:focus{border-color:var(--accent)}
+  .pagejump .pjtot{font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .pagejump .pjgo{height:42px;padding:0 16px;border-radius:11px;background:var(--accent);color:#fff;font-size:14px;font-weight:700}
+  .pagejump .pjquick{display:flex;gap:6px;margin-top:10px}
+  .pagejump .pjquick button{flex:1;height:32px;border-radius:9px;background:var(--panel2);font-size:12px;font-weight:600;color:var(--ink)}
+  .pagejump .pjmsg{min-height:16px;margin-top:8px;font-size:12px;color:var(--danger)}
 
   /* 드롭다운 메뉴 */
   .menu{position:absolute;top:100px;right:12px;z-index:40;
@@ -494,7 +509,7 @@
     <div class="sizes" id="sizes"></div>
     <span class="gngrow"></span>
     <button class="gnz" id="pgPrev" title="이전 쪽">‹</button>
-    <span class="gnz zlabel" style="pointer-events:none" id="pageInd">1 / 1</span>
+    <button class="gnz zlabel pgind" id="pageInd" title="쪽 번호로 이동">1 / 1</button>
     <button class="gnz" id="pgNext" title="다음 쪽">›</button>
     <span class="gnsep2"></span>
     <div class="zoomg2">
@@ -549,7 +564,7 @@ const COVERS = ['#7b6cf0','#f48fb1','#4fc3f7','#4dd0a6','#ffb74d','#f2708a','#64
 /* ============================ 저장소 ============================ */
 // 노트는 IndexedDB(수백 MB 이상)에 저장. 과거 localStorage(약 5MB) 데이터는 최초 1회 자동 이전.
 // PDF 배경 이미지는 'bgs' 저장소에 페이지별 Blob으로 분리 → 노트 본문 JSON은 작게 유지.
-const APP_VERSION='2026-08-25c';   // 실행 중인 앱 버전(서재 하단 표시)
+const APP_VERSION='2026-10-23a';   // 실행 중인 앱 버전(서재 하단 표시)
 const DB_KEY='ssamnote_db_v2';
 let db = load();                 // 부팅 직후엔 localStorage(있다면)로 시작, initStorage()가 IDB로 교체
 let idb=null;
@@ -1409,6 +1424,47 @@ $('#zoomOut').onclick=()=>zoomBy(0.8);
 $('#zoomLabel').onclick=fitPage;
 $('#pgPrev').onclick=()=>{ if(pi>0) gotoPage(pi-1); };
 $('#pgNext').onclick=()=>{ if(pi<nb.pages.length-1) gotoPage(pi+1); };
+$('#pageInd').onclick=()=>openPageJump();
+
+/* 쪽 번호를 입력해 바로 이동 (PDF 수업 자료 등 쪽수가 많을 때) */
+function closePageJump(){ $('#pagejump')?.remove(); $('#pjBackdrop')?.remove(); }
+function openPageJump(){
+  if($('#pagejump')){ closePageJump(); return; }
+  const total=nb.pages.length;
+  const bd=el('div','backdrop'); bd.id='pjBackdrop'; bd.style.position='fixed'; bd.style.zIndex='45'; bd.onclick=closePageJump;
+  document.body.appendChild(bd);
+  const box=el('div','pagejump'); box.id='pagejump';
+  box.innerHTML=`<h4>쪽 번호로 이동</h4>
+    <div class="pjrow">
+      <input id="pjInput" type="text" inputmode="numeric" pattern="[0-9]*" enterkeyhint="go" autocomplete="off" aria-label="이동할 쪽 번호" placeholder="${pi+1}">
+      <span class="pjtot">/ ${total}</span>
+      <button class="pjgo" id="pjGo">이동</button>
+    </div>
+    <div class="pjquick"><button data-p="1">첫 쪽</button><button data-p="${total}">마지막 쪽</button></div>
+    <div class="pjmsg" id="pjMsg"></div>`;
+  document.body.appendChild(box);
+  // 쪽 표시 버튼 바로 아래(화면 밖으로 나가지 않게)
+  const r=$('#pageInd').getBoundingClientRect(), bw=box.offsetWidth;
+  box.style.left=clamp(r.left+r.width/2-bw/2, 8, innerWidth-bw-8)+'px';
+  box.style.top=(r.bottom+8)+'px';
+  const inp=$('#pjInput'), msg=$('#pjMsg');
+  const go=v=>{
+    const n=parseInt(String(v).replace(/[^0-9]/g,''),10);
+    if(!n){ msg.textContent='쪽 번호를 입력해 주세요'; inp.focus(); return; }
+    if(n<1||n>total){ msg.textContent=`1 ~ ${total} 사이의 번호를 입력해 주세요`; inp.select(); return; }
+    closePageJump();
+    if(n-1!==pi) gotoPage(n-1);
+    toast(`${n}쪽으로 이동했어요`);
+  };
+  $('#pjGo').onclick=()=>go(inp.value);
+  box.querySelector('.pjquick').onclick=e=>{ const p=e.target.closest('button')?.dataset.p; if(p) go(p); };
+  inp.addEventListener('input',()=>{ inp.value=inp.value.replace(/[^0-9]/g,''); msg.textContent=''; });
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault(); go(inp.value); }
+    else if(e.key==='Escape'){ e.preventDefault(); closePageJump(); }
+  });
+  inp.focus();
+}
 const toPage = (sx,sy)=>({x:(sx-view.tx)/view.s, y:(sy-view.ty)/view.s});
 const toScreen=(px,py)=>({x:px*view.s+view.tx, y:py*view.s+view.ty});
 function clampView(){
@@ -3089,6 +3145,7 @@ function toastUndo(msg, onUndo){
 addEventListener('keydown',e=>{
   if($('#editor').classList.contains('hidden'))return;
   if(tedit)return;
+  if(e.target.closest?.('input,textarea,select'))return;   // 입력창에 타이핑 중이면 단축키 무시
   const m=e.metaKey||e.ctrlKey;
   if(m&&e.key==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); }
   else if(m&&e.key==='y'){ e.preventDefault(); redo(); }
@@ -3115,9 +3172,11 @@ initStorage().catch(()=>{}).then(()=>{
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(reg=>{ try{ reg.update(); }catch(e){} }).catch(()=>{}));
   // 새 버전이 적용되면 한 번만 자동 새로고침 (아이패드에서 옛 버전이 계속 실행되지 않도록)
+  // 처음 설치될 때(이전 서비스워커 없음)는 이미 최신이므로 새로고침하지 않음 — 작업 중 화면이 갑자기 다시 열리지 않게
+  const _hadSW=!!navigator.serviceWorker.controller;
   let _swReloaded=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(_swReloaded) return; _swReloaded=true;
+    if(!_hadSW || _swReloaded) return; _swReloaded=true;
     saveNow(); location.reload();
   });
 }
