@@ -223,11 +223,12 @@
          padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
          transform:translateX(100%);transition:transform .26s cubic-bezier(.2,.8,.3,1);display:flex;flex-direction:column}
   #pages.open{transform:none}
+  #pages:not(.open){box-shadow:none}
   #pages .ph{padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:14px;
              display:flex;align-items:center;justify-content:space-between}
   #pages .plist{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
   .thumb{border:2px solid transparent;border-radius:8px;overflow:hidden;position:relative;background:#fff;
-         box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer}
+         box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer;flex:0 0 auto}
   .thumb.on{border-color:var(--accent)}
   .thumb canvas{display:block;width:100%}
   .thumb .n{position:absolute;left:6px;bottom:5px;font-size:11px;color:#333;background:rgba(255,255,255,.8);
@@ -335,11 +336,16 @@
          background:color-mix(in srgb,var(--panel) 65%,var(--panel2));
          border-bottom:1px solid var(--line);
          backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .gnsubwrap{flex:1 1 auto;min-width:0;height:100%;position:relative;display:flex}
   .gnsubscroll{flex:1 1 auto;min-width:0;height:100%;display:flex;align-items:center;gap:8px;
                overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .gnsubscroll::-webkit-scrollbar{display:none}
   .gnsubscroll.more{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);
-                    mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}
+                    mask-image:linear-gradient(90deg,#000 calc(100% - 40px),transparent)}
+  .gnmore{position:absolute;right:0;top:50%;transform:translateY(-50%);width:28px;height:34px;border-radius:9px;
+          background:var(--panel);color:var(--ink);font-size:18px;font-weight:700;box-shadow:var(--shadow-sm);
+          display:flex;align-items:center;justify-content:center}
+  .gnmore[hidden]{display:none}
   .undopill{display:flex;background:var(--panel);border-radius:12px;box-shadow:var(--shadow-sm);overflow:hidden;flex:0 0 auto}
   .undopill button{width:42px;height:34px;color:var(--ink);font-size:17px;display:flex;align-items:center;justify-content:center;transition:background .12s}
   .undopill button:hover{background:var(--panel2)}
@@ -356,18 +362,19 @@
   .gnpg .gnz{min-width:30px;padding:0 4px;font-size:17px}
   .pgwrap{position:relative;display:flex}
   .pgbox{display:flex;align-items:center;gap:5px;cursor:text;padding:0 2px}
-  .pgbox input{width:46px;height:34px;padding:0 4px;border:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);border-radius:9px;
-               background:var(--panel);color:var(--ink);font:700 16px/1 inherit;font-family:inherit;text-align:center;
+  .pgbox input{width:46px;height:34px;padding:0 4px;border:1.5px solid var(--muted);border-radius:9px;
+               background:var(--panel);color:var(--ink);font-family:inherit;font-size:16px;font-weight:700;line-height:1;text-align:center;
                font-variant-numeric:tabular-nums;outline:0;-webkit-appearance:none;appearance:none;
                -webkit-user-select:text;user-select:text;transition:border-color .12s,box-shadow .12s}
   .pgbox input.w3{width:56px}
   .pgbox input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
-  .pgbox input::placeholder{color:var(--muted);opacity:.7}
+  .pgbox input::placeholder{color:var(--muted);opacity:1}
   .pgbox .pgtot{font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
   /* 입력 중에만 칸 바로 아래에 뜨는 '이동' 버튼 (툴바 폭이 바뀌지 않도록 겹쳐서 표시) */
-  .pggo{position:absolute;top:calc(100% + 7px);left:0;z-index:31;height:36px;padding:0 16px;border-radius:10px;
+  .pggo{position:absolute;top:calc(100% + 7px);right:0;z-index:31;height:36px;padding:0 16px;border-radius:10px;
         background:var(--accent);color:#fff;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:var(--shadow)}
   .pggo[hidden]{display:none}
+  .pggo.err{background:var(--danger)}
 
   /* 드롭다운 메뉴 */
   .menu{position:absolute;top:100px;right:12px;z-index:40;
@@ -409,6 +416,7 @@
   #txtcolpop .swatch{width:26px;height:26px}
 
   .toast{position:absolute;bottom:84px;left:50%;transform:translateX(-50%);z-index:60;
+         width:max-content;max-width:calc(100% - 32px);word-break:keep-all;text-align:center;
          background:rgba(26,31,40,.92);color:#eef2f7;padding:11px 18px;border-radius:999px;font-size:13px;font-weight:600;
          letter-spacing:-.1px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
          box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .22s,transform .22s}
@@ -510,6 +518,7 @@
   <!-- 보조 바: 실행취소 + 도구 옵션 + 줌 -->
   <div class="gnsub">
     <!-- 화면이 좁으면 이 부분만 옆으로 밀림(오른쪽 끝이 흐려지며 더 있다는 표시) -->
+    <div class="gnsubwrap">
     <div class="gnsubscroll" id="gnsubscroll">
       <span class="undopill"><button id="undoBtn" title="실행 취소">↺</button><button id="redoBtn" title="다시 실행">↻</button></span>
       <span class="gnsep2 tool-only"></span>
@@ -522,6 +531,8 @@
         <button class="gnz zlabel" id="zoomLabel" title="화면 맞춤">100%</button>
         <button class="gnz" id="zoomIn" title="확대">＋</button>
       </div>
+    </div>
+    <button class="gnmore" id="gnMore" title="도구 옵션 더 보기" hidden>›</button>
     </div>
     <span class="gnsep2"></span>
     <!-- 쪽 이동: 항상 보이는 자리. 숫자 칸을 눌러 번호를 쓰면 그 쪽으로 이동 -->
@@ -1290,7 +1301,8 @@ function open(n){
   clearSelection(); clearTextSel();
   buildColorBar(); buildSizeBar(); setTool(tool);
   renderTabs(); fitPage(); refreshPageUI();
-  if($('#pages').classList.contains('open')) buildPageList();   // 다른 노트로 바꿨을 때 이전 노트 썸네일이 남지 않게
+  placePagesPanel();
+  if($('#pages').classList.contains('open')){ buildPageList(); scrollThumbIntoView(); }   // 다른 노트로 바꿨을 때 이전 노트 썸네일이 남지 않게
   scheduleRender();
   // 쪽이 많은 노트를 처음 열 때 한 번만: 쪽 번호 칸 사용법 안내
   if(n.pages.length>=5 && !db.hintPageJump){ db.hintPageJump=1; save(); setTimeout(()=>toast('위의 쪽 번호 칸을 누르고 번호를 쓰면 그 쪽으로 바로 가요',4500),700); }
@@ -1356,8 +1368,10 @@ function setTool(t){
   updSubFade();
 }
 // 도구 옵션 줄이 화면보다 길면 오른쪽 끝을 흐리게 — 옆으로 밀면 더 있다는 표시
-function updSubFade(){ const sc=$('#gnsubscroll'); if(sc) sc.classList.toggle('more', sc.scrollWidth-sc.scrollLeft-sc.clientWidth>2); }
+function updSubFade(){ const sc=$('#gnsubscroll'); if(!sc) return;
+  const more=sc.scrollWidth-sc.scrollLeft-sc.clientWidth>2; sc.classList.toggle('more',more); $('#gnMore').hidden=!more; }
 $('#gnsubscroll').addEventListener('scroll',updSubFade,{passive:true});
+$('#gnMore').onclick=()=>{ const sc=$('#gnsubscroll'); sc.scrollBy({left:Math.max(80,sc.clientWidth*.7),behavior:'smooth'}); };
 document.querySelectorAll('#toolset .rtool').forEach(b=>b.onclick=()=>{
   if(b.dataset.tool===tool){ toggleToolPop(b); }   // 이미 선택된 도구 재탭 → 옵션
   else setTool(b.dataset.tool);
@@ -1462,16 +1476,23 @@ function parsePageNum(v){
                   .replace(/[lI|!]/g,'1').replace(/[oO]/g,'0').replace(/[^0-9]/g,'');
   return v ? parseInt(v,10) : 0;
 }
-function pageJumpTo(n){
+let _pgErrT=null;
+function pageJumpTo(n, inline){
   const total=nb.pages.length;
-  if(n<1||n>total){ toast(`1 ~ ${total} 사이의 쪽 번호를 입력해 주세요`); return false; }
+  if(n<1||n>total){
+    if(inline){   // 입력 중: 키보드에 가리지 않도록 칸 바로 아래 버튼에 안내
+      pgGo.textContent=`1~${total}쪽만 있어요`; pgGo.classList.add('err');
+      clearTimeout(_pgErrT); _pgErrT=setTimeout(()=>{ pgGo.textContent='이동'; pgGo.classList.remove('err'); },2200);
+    } else toast(`1 ~ ${total} 사이의 쪽 번호를 입력해 주세요`);
+    return false;
+  }
   if(n-1!==pi) gotoPage(n-1);
   return true;
 }
 function commitPageNum(){
   const n=parsePageNum(pageNum.value);
   if(!n){ _pgCancel=true; pageNum.blur(); return; }          // 빈 칸이면 그냥 닫기
-  if(!pageJumpTo(n)){ pageNum.value=''; return; }            // 범위 밖: 칸은 열어 둔 채 다시 입력
+  if(!pageJumpTo(n,true)){ pageNum.value=''; return; }       // 범위 밖: 칸은 열어 둔 채 다시 입력
   _pgCancel=true; pageNum.blur();
 }
 pageNum.addEventListener('focus',()=>{
@@ -1480,7 +1501,7 @@ pageNum.addEventListener('focus',()=>{
   pgGo.hidden=false;
 });
 pageNum.addEventListener('blur',()=>{
-  pgGo.hidden=true;
+  pgGo.hidden=true; clearTimeout(_pgErrT); pgGo.textContent='이동'; pgGo.classList.remove('err');
   // 번호를 쓰고 키보드만 내린 경우(다른 곳을 누르지 않음)에도 그 쪽으로 이동
   const n=parsePageNum(pageNum.value);
   const byTap=performance.now()-_pgPtrT<600;
@@ -1488,6 +1509,7 @@ pageNum.addEventListener('blur',()=>{
   _pgCancel=false;
   if(nb) pageNum.value=pi+1;
 });
+pageNum.addEventListener('input',()=>{ if(pgGo.classList.contains('err')){ clearTimeout(_pgErrT); pgGo.textContent='이동'; pgGo.classList.remove('err'); } });
 pageNum.addEventListener('keydown',e=>{
   if(e.key==='Enter' && !e.isComposing){ e.preventDefault(); commitPageNum(); }
   else if(e.key==='Escape'){ e.preventDefault(); _pgCancel=true; pageNum.blur(); }
@@ -2789,7 +2811,8 @@ function commitText(){
 function closeTextEditor(){ if(tedit){ const ta=tedit; tedit=null; teditText=null; teditNew=false; ta.removeEventListener('blur',commitText); ta.remove(); } }
 
 /* ============================ 페이지 패널 ============================ */
-$('#pagesBtn').onclick=()=>{ placePagesPanel(); $('#pages').classList.toggle('open'); if($('#pages').classList.contains('open')) buildPageList(); };
+$('#pagesBtn').onclick=()=>{ placePagesPanel(); $('#pages').classList.toggle('open'); if($('#pages').classList.contains('open')){ buildPageList(); scrollThumbIntoView(); } };
+function scrollThumbIntoView(){ document.querySelector('#plist .thumb.on')?.scrollIntoView({block:'nearest'}); }
 // 썸네일 패널을 툴바 아래부터 시작 (툴바의 쪽 이동·메뉴 버튼을 가리지 않게)
 function placePagesPanel(){ const p=$('#pages'), top=$('#stage').offsetTop; if(top>0){ p.style.top=top+'px'; p.style.paddingTop='0'; } }
 $('#pagesClose').onclick=()=>$('#pages').classList.remove('open');
@@ -2824,7 +2847,7 @@ function gotoPage(i){
   if(nb.lastPageId!==page.id){ nb.lastPageId=page.id; dirtyNbs.add(nb.id); save(); }   // 보던 쪽 기억
   refreshPageUI(); fitPage(); scheduleRender();
   document.querySelectorAll('#plist .thumb').forEach((t,k)=>t.classList.toggle('on',k===pi));
-  if($('#pages').classList.contains('open')) document.querySelector('#plist .thumb.on')?.scrollIntoView({block:'nearest'});
+  if($('#pages').classList.contains('open')) scrollThumbIntoView();
 }
 function buildPageList(){
   const list=$('#plist'); list.innerHTML='';
@@ -3249,24 +3272,42 @@ function tryApplyUpdate(since){
   if(_lastInputT>since || _appBusy()) return false;     // 그 사이 화면을 만졌거나 작업 중이면 다음에 돌아올 때 적용
   applyUpdateNow(); return true;
 }
+let _updApplying=false;
 function applyUpdateNow(){
+  if(_updApplying) return; _updApplying=true;
   try{ commitSuspended(); commitText(); }catch(e){}
   saveNow();
-  try{
-    localStorage.setItem(UPD_TRY, JSON.stringify({v:_updPending, t:Date.now()}));
-    const inEditor=nb && !$('#editor').classList.contains('hidden');
-    localStorage.setItem(UPD_RESUME, JSON.stringify({nb:inEditor?nb.id:null, pg:inEditor&&page?page.id:null, from:APP_VERSION, t:Date.now()}));
-  }catch(e){}
-  const t0=Date.now();
-  (function wait(){ if((dirtyNbs.size||dirtyPgs.size) && Date.now()-t0<3000) return setTimeout(wait,100); location.reload(); })();   // 저장이 끝난 뒤 새로고침
+  const t0=Date.now(), since=performance.now();
+  (function wait(){
+    // 저장을 기다리는 사이 다시 쓰기 시작했거나, 저장이 끝나지 않으면 새로고침하지 않고 다음에 돌아올 때 다시 시도
+    if(_lastInputT>since || _appBusy() || ((dirtyNbs.size||dirtyPgs.size) && Date.now()-t0>=3000)){ _updApplying=false; return; }
+    if(dirtyNbs.size||dirtyPgs.size) return setTimeout(wait,100);
+    try{
+      localStorage.setItem(UPD_TRY, JSON.stringify({v:_updPending, t:Date.now()}));
+      const inEditor=nb && !$('#editor').classList.contains('hidden');
+      localStorage.setItem(UPD_RESUME, JSON.stringify({nb:inEditor?nb.id:null, pg:inEditor&&page?page.id:null, from:APP_VERSION, t:Date.now(),
+        tool, color, sizes:[penSize,ballSize,glowSize,hlSize,erSize], view:inEditor?{s:view.s/fitScale, tx:view.tx, ty:view.ty}:null}));
+    }catch(e){}
+    location.reload();
+  })();
 }
 function resumeAfterUpdate(){
   let r=null; try{ r=JSON.parse(localStorage.getItem(UPD_RESUME)||'null'); localStorage.removeItem(UPD_RESUME); }catch(e){}
   if(!r || Date.now()-r.t>2*60e3) return;
+  // 쓰던 도구·색·굵기 그대로
+  if(typeof r.tool==='string' && r.tool) tool=r.tool;
+  if(typeof r.color==='string' && r.color) color=r.color;
+  if(Array.isArray(r.sizes) && r.sizes.length===5 && r.sizes.every(v=>typeof v==='number')) [penSize,ballSize,glowSize,hlSize,erSize]=r.sizes;
   const n=r.nb && db.notebooks.find(x=>x.id===r.nb);
-  if(n){ if(r.pg && n.pages.some(p=>p.id===r.pg)) n.lastPageId=r.pg; open(n); }
+  if(n){
+    if(r.pg && n.pages.some(p=>p.id===r.pg)) n.lastPageId=r.pg;
+    open(n);
+    // 보던 확대·위치 그대로
+    if(r.view && r.view.s>0){ view.s=r.view.s*fitScale; view.tx=r.view.tx; view.ty=r.view.ty; clampView(); updateZoom(); staticValid=false; scheduleRender(); }
+  }
   if(r.from!==APP_VERSION) setTimeout(()=>toast(`새 버전으로 업데이트했어요 (v${APP_VERSION})`,2500),400);
 }
+// 앱으로 돌아올 때만 적용 — 화면을 보고 있는 도중(수업 중 띄워 둔 상태 등)에 갑자기 새로고침하지 않음
 addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible') return;
   if(_updPending){ tryApplyUpdate(performance.now()); return; }
@@ -3274,11 +3315,6 @@ addEventListener('visibilitychange',()=>{
   navigator.serviceWorker?.getRegistration?.().then(reg=>reg&&reg.update()).catch(()=>{});
 });
 addEventListener('pageshow',e=>{ if(e.persisted) checkForUpdate(); });
-// 앱을 켜 둔 채 오래 쉬고 있을 때도 가끔 확인
-setInterval(()=>{
-  if(document.visibilityState!=='visible' || performance.now()-_lastInputT<5*60e3) return;
-  if(_updPending) tryApplyUpdate(-Infinity); else checkForUpdate();
-},15*60e3);
 
 /* ============================ 시작 ============================ */
 // IndexedDB에서 노트를 불러온 뒤 서재 표시 (db 객체가 교체되므로 설정도 다시 적용)
@@ -3295,13 +3331,13 @@ initStorage().catch(()=>{}).then(()=>{
 /* ============================ 앱 설치(PWA) — 오프라인 실행 ============================ */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(reg=>{ try{ reg.update(); }catch(e){} }).catch(()=>{}));
-  // 새 버전이 적용되면 한 번만 자동 새로고침 (아이패드에서 옛 버전이 계속 실행되지 않도록)
-  // 처음 설치될 때(이전 서비스워커 없음)는 이미 최신이므로 새로고침하지 않음 — 작업 중 화면이 갑자기 다시 열리지 않게
+  // 서비스워커가 바뀌면 앱 버전도 바뀌었는지 한 번 확인 (처음 설치될 때는 이미 최신이므로 확인하지 않음)
   const _hadSW=!!navigator.serviceWorker.controller;
-  let _swReloaded=false;
+  let _swChecked=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(!_hadSW || _swReloaded) return; _swReloaded=true;
-    _updPending=_updPending||'sw'; tryApplyUpdate(-Infinity);   // 필기·입력 중이면 다음에 앱으로 돌아올 때 적용
+    if(!_hadSW || _swChecked) return; _swChecked=true;
+    // 앱 본체는 늘 서버에서 받으므로 서비스워커만 바뀐 것은 새로고침할 이유가 아님 → 앱 버전이 실제로 바뀌었을 때만 적용
+    checkForUpdate();
   });
 }
 
